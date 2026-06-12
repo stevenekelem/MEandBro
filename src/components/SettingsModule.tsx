@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import type { VocabWord } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
-import { Trash2, RotateCcw, Volume2, Award, BookOpen, Mic, RefreshCw } from 'lucide-react';
+import { Auth } from './Auth';
+import { Trash2, RotateCcw, Volume2, Award, BookOpen, Mic, RefreshCw, Cloud, LogOut } from 'lucide-react';
 
 export const SettingsModule: React.FC = () => {
   const {
@@ -14,8 +15,12 @@ export const SettingsModule: React.FC = () => {
     stats,
     savedVocabulary,
     removeWord,
-    resetAllData
+    resetAllData,
+    user,
+    authLoading
   } = useApp();
+
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const speakVocab = (word: string) => {
     const targetLang = nativeLanguage === 'en' ? 'es' : 'en';
@@ -29,17 +34,82 @@ export const SettingsModule: React.FC = () => {
   };
 
   return (
-    <div className="animate-slide-up" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+    <div className="animate-slide-up" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', position: 'relative', height: '100%' }}>
       
       {/* Title */}
-      <div>
-        <h2 style={{ fontSize: '22px', fontWeight: '800' }}>
-          {nativeLanguage === 'es' ? 'Tu Progreso' : 'Your Progress'}
-        </h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-          {nativeLanguage === 'es' ? 'Revisa tus estadísticas y vocabulario' : 'Review your learning stats & vocabulary'}
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ fontSize: '22px', fontWeight: '800' }}>
+            {nativeLanguage === 'es' ? 'Tu Progreso' : 'Your Progress'}
+          </h2>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            {nativeLanguage === 'es' ? 'Revisa tus estadísticas y vocabulario' : 'Review your learning stats & vocabulary'}
+          </p>
+        </div>
       </div>
+
+      {/* Cloud Sync & Auth Banner */}
+      {!authLoading && (
+        <div className="glass-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
+              <Cloud size={18} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                {user ? (nativeLanguage === 'es' ? 'Sincronización en la Nube' : 'Cloud Synchronized') : (nativeLanguage === 'es' ? 'Guarda tu Progreso' : 'Backup your progress')}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                {user ? `${user.email}` : (nativeLanguage === 'es' ? 'Inicia sesión para no perder tus datos.' : 'Sign in to access your stats from any device.')}
+              </div>
+            </div>
+          </div>
+          
+          {user ? (
+            <button
+              onClick={resetAllData}
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                color: 'var(--danger)',
+                fontWeight: '600',
+                fontSize: '11px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                alignSelf: 'flex-start',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <LogOut size={12} />
+              <span>{nativeLanguage === 'es' ? 'Cerrar Sesión' : 'Sign Out'}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              style={{
+                background: 'var(--primary-gradient)',
+                border: 'none',
+                color: 'white',
+                fontWeight: '600',
+                fontSize: '11px',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                alignSelf: 'flex-start',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 4px 12px rgba(124, 58, 237, 0.2)'
+              }}
+            >
+              {nativeLanguage === 'es' ? 'Iniciar Sesión / Registrarse' : 'Log In / Sign Up'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Stats Dashboard Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -247,6 +317,29 @@ export const SettingsModule: React.FC = () => {
         <RotateCcw size={14} />
         <span>{nativeLanguage === 'es' ? 'Reiniciar Datos' : 'Reset Progress'}</span>
       </button>
+
+      {/* Auth Modal Overlay */}
+      {showAuthModal && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 12, 41, 0.7)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 100,
+          padding: '16px'
+        }}>
+          <Auth 
+            onClose={() => setShowAuthModal(false)} 
+            onAuthSuccess={() => setShowAuthModal(false)}
+          />
+        </div>
+      )}
 
     </div>
   );

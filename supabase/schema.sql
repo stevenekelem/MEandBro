@@ -1,10 +1,13 @@
--- Supabase Database Schema for Spanglish
-
--- 1. PROFILES TABLE (linked to Auth users)
+-- 1. PROFILES TABLE (linked to Auth users with learning stats)
 CREATE TABLE public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   native_lang TEXT CHECK (native_lang IN ('en', 'es')) DEFAULT 'en',
   level TEXT CHECK (level IN ('basic', 'intermediate', 'advanced')) DEFAULT 'basic',
+  words_translated INTEGER DEFAULT 0,
+  chat_sessions INTEGER DEFAULT 0,
+  pronunciation_attempts INTEGER DEFAULT 0,
+  avg_pronunciation_score INTEGER DEFAULT 0,
+  total_pronunciation_score INTEGER DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -22,8 +25,17 @@ CREATE POLICY "Users can update their own profile"
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, native_lang, level)
-  VALUES (new.id, 'en', 'basic');
+  INSERT INTO public.profiles (
+    id, 
+    native_lang, 
+    level, 
+    words_translated, 
+    chat_sessions, 
+    pronunciation_attempts, 
+    avg_pronunciation_score, 
+    total_pronunciation_score
+  )
+  VALUES (new.id, 'en', 'basic', 0, 0, 0, 0, 0);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -31,6 +43,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
 
 
 -- 2. VOCABULARY TABLE (starred words)
