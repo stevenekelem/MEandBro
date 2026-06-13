@@ -53,6 +53,11 @@ CREATE TABLE public.vocabulary (
   word TEXT NOT NULL,
   translation TEXT NOT NULL,
   category TEXT DEFAULT 'General',
+  part_of_speech TEXT,
+  definition TEXT,
+  example_sentence TEXT,
+  example_translation TEXT,
+  conjugations JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -62,6 +67,10 @@ CREATE POLICY "Users can manage their own vocabulary"
   ON public.vocabulary FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_vocabulary_part_of_speech ON public.vocabulary(part_of_speech);
+CREATE INDEX IF NOT EXISTS idx_vocabulary_user_id ON public.vocabulary(user_id);
+
 
 
 -- 3. CHAT HISTORY TABLE (LLM Tutor Logs)
@@ -79,3 +88,30 @@ CREATE POLICY "Users can view and add their own chat logs"
   ON public.chat_history FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+-- 4. NEWS ARTICLES TABLE (Community Shared News)
+CREATE TABLE IF NOT EXISTS public.news_articles (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL,
+  summary_basic TEXT NOT NULL,
+  summary_intermediate TEXT NOT NULL,
+  summary_advanced TEXT NOT NULL,
+  vocab JSONB NOT NULL,
+  submitted_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.news_articles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view news articles"
+  ON public.news_articles FOR SELECT
+  USING (true);
+
+CREATE POLICY "Authenticated users can submit news articles"
+  ON public.news_articles FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_news_articles_url ON public.news_articles(submitted_url);
+

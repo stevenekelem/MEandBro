@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { RefreshCw, BookOpen, Volume2, Plus, Check } from 'lucide-react';
+import { supabase } from '../utils/supabase';
+import { 
+  RefreshCw, Volume2, Plus, Check, 
+  Share2, X, Send, Link, FileText, Lock 
+} from 'lucide-react';
 import { speakTextWithBestVoice } from '../utils/speech';
 
 interface NewsItem {
@@ -9,33 +13,76 @@ interface NewsItem {
   category: string;
   summary: string;
   vocab: Array<{ word: string; translation: string }>;
+  submitted_url?: string;
+  created_at?: string;
 }
 
 export const NewsModule: React.FC = () => {
-  const { nativeLanguage, level, speechRate, saveWord, savedVocabulary, removeWord } = useApp();
+  const { nativeLanguage, level, speechRate, saveWord, savedVocabulary, removeWord, user } = useApp();
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Submit Form States
+  const [showSubmitForm, setShowSubmitForm] = useState(false);
+  const [submitTitle, setSubmitTitle] = useState('');
+  const [submitCategory, setSubmitCategory] = useState('Ciencia');
+  const [submitContent, setSubmitContent] = useState('');
+  const [submitUrl, setSubmitUrl] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const fetchNews = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     
     try {
+      // 1. Fetch daily news from Express proxy
       const response = await fetch('/api/news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nativeLanguage, level })
       });
       const data = await response.json();
+      
+      let baseNews: NewsItem[] = [];
       if (Array.isArray(data)) {
-        setNews(data);
-      } else {
-        throw new Error('Invalid news format');
+        baseNews = data;
       }
+
+      // 2. Fetch community shared news from Supabase
+      let communityNews: NewsItem[] = [];
+      const { data: dbArticles, error: dbError } = await supabase
+        .from('news_articles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (dbError) {
+        console.warn('Could not load community articles from Supabase:', dbError.message);
+      } else if (dbArticles) {
+        communityNews = dbArticles.map(art => ({
+          id: art.id,
+          title: art.title,
+          category: art.category,
+          // Select correct level summary
+          summary: level === 'basic' 
+            ? art.summary_basic 
+            : level === 'intermediate' 
+              ? art.summary_intermediate 
+              : art.summary_advanced,
+          vocab: Array.isArray(art.vocab) ? art.vocab : [],
+          submitted_url: art.submitted_url || undefined,
+          created_at: art.created_at
+        }));
+      }
+
+      // Combine feed: Community articles first, then baseline articles
+      setNews([...communityNews, ...baseNews]);
+
     } catch (error) {
       console.warn('Could not fetch news from proxy. Using local fallback data.', error);
-      // Inline robust fallback data (matches what's on server.js)
+      // Inline fallback
       const fallbackNews = nativeLanguage === 'en'
         ? [
             {
@@ -129,6 +176,75 @@ export const NewsModule: React.FC = () => {
     }
   };
 
+  // Submit Article to backend and Supabase
+  const handleSubmitArticle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      setSubmitError(nativeLanguage === 'es' ? 'Debes iniciar sesión para compartir noticias.' : 'You must log in to share news articles.');
+      return;
+    }
+    if (!submitTitle.trim() || !submitContent.trim()) {
+      setSubmitError(nativeLanguage === 'es' ? 'Completa los campos obligatorios.' : 'Please fill out required fields.');
+      return;
+    }
+
+    setSubmitting(true);
+    setSubmitError('');
+
+    try {
+      const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
+      
+      // 1. Call proxy backend to summarize and extract vocab
+      const response = await fetch('/api/news/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: submitTitle,
+          category: submitCategory,
+          content: submitContent,
+          targetLanguage
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to summarize article content.');
+      const data = await response.json();
+
+      // 2. Insert into Supabase table public.news_articles
+      const { error: dbError } = await supabase.from('news_articles').insert({
+        user_id: user.id,
+        title: submitTitle.trim(),
+        category: submitCategory,
+        summary_basic: data.summary_basic,
+        summary_intermediate: data.summary_intermediate,
+        summary_advanced: data.summary_advanced,
+        vocab: data.vocab,
+        submitted_url: submitUrl.trim() || null
+      });
+
+      if (dbError) throw dbError;
+
+      // Success clean up
+      setSubmitSuccess(true);
+      setSubmitTitle('');
+      setSubmitContent('');
+      setSubmitUrl('');
+      
+      // Reload news feed to show the newly submitted article at the top
+      fetchNews();
+
+      setTimeout(() => {
+        setSubmitSuccess(false);
+        setShowSubmitForm(false);
+      }, 2000);
+
+    } catch (err: any) {
+      console.error('Error submitting article:', err);
+      setSubmitError(err.message || 'Error processing news article.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const renderFormattedSummary = (summaryText: string) => {
     const regex = /([^\[]+)(?:\[(.*?)\])?/g;
     const matches = [...summaryText.matchAll(regex)];
@@ -172,7 +288,7 @@ export const NewsModule: React.FC = () => {
     <div className="animate-slide-up" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
       {/* Header bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '22px', fontWeight: '800' }}>
             {nativeLanguage === 'es' ? 'Noticias del Día' : 'Daily News'}
@@ -184,27 +300,205 @@ export const NewsModule: React.FC = () => {
           </p>
         </div>
         
-        <button 
-          onClick={() => fetchNews(true)} 
-          disabled={loading || refreshing}
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            color: 'var(--text-primary)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-          className={refreshing ? 'pulse-recording' : ''}
-        >
-          <RefreshCw size={16} style={{ transform: refreshing ? 'rotate(180deg)' : 'none', transition: 'all 0.5s ease' }} />
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => setShowSubmitForm(!showSubmitForm)}
+            style={{
+              background: showSubmitForm ? 'var(--danger)' : 'var(--primary-gradient)',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              fontSize: '12px',
+              fontWeight: '700',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(124, 58, 237, 0.2)'
+            }}
+          >
+            {showSubmitForm ? <X size={14} /> : <Share2 size={14} />}
+            <span>{showSubmitForm ? (nativeLanguage === 'es' ? 'Cerrar' : 'Close') : (nativeLanguage === 'es' ? 'Compartir' : 'Submit')}</span>
+          </button>
+
+          <button 
+            onClick={() => fetchNews(true)} 
+            disabled={loading || refreshing}
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            className={refreshing ? 'pulse-recording' : ''}
+          >
+            <RefreshCw size={15} style={{ transform: refreshing ? 'rotate(180deg)' : 'none', transition: 'all 0.5s ease' }} />
+          </button>
+        </div>
       </div>
+
+      {/* Share Article form */}
+      {showSubmitForm && (
+        <div className="glass-card animate-slide-up" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid rgba(139, 92, 246, 0.35)', background: 'rgba(15, 12, 41, 0.4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileText size={18} style={{ color: 'var(--primary)' }} />
+            <span style={{ fontWeight: '800', fontSize: '14px', color: 'var(--text-primary)' }}>
+              {nativeLanguage === 'es' ? 'Compartir Artículo de Noticias' : 'Submit News Article'}
+            </span>
+          </div>
+
+          {!user ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '10px', borderRadius: '10px', color: 'var(--danger)', fontSize: '12px' }}>
+              <Lock size={14} />
+              <span>{nativeLanguage === 'es' ? 'Inicia sesión en la pestaña de Vocabulario para enviar artículos.' : 'Log in under the Vocabulary tab to share articles.'}</span>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmitArticle} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Title Input */}
+              <input
+                type="text"
+                placeholder={nativeLanguage === 'es' ? 'Título del artículo *' : 'Article Title *'}
+                value={submitTitle}
+                onChange={(e) => setSubmitTitle(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-app)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  color: 'var(--text-primary)',
+                  outline: 'none'
+                }}
+              />
+
+              {/* Category selector */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700' }}>
+                  {nativeLanguage === 'es' ? 'Categoría:' : 'Category:'}
+                </span>
+                <select
+                  value={submitCategory}
+                  onChange={(e) => setSubmitCategory(e.target.value)}
+                  style={{
+                    background: 'var(--bg-app)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '12px',
+                    color: 'var(--text-primary)',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="Ciencia">{nativeLanguage === 'es' ? 'Ciencia' : 'Science'}</option>
+                  <option value="Cultura">{nativeLanguage === 'es' ? 'Cultura' : 'Culture'}</option>
+                  <option value="Tecnología">{nativeLanguage === 'es' ? 'Tecnología' : 'Technology'}</option>
+                  <option value="Deportes">{nativeLanguage === 'es' ? 'Deportes' : 'Sports'}</option>
+                </select>
+              </div>
+
+              {/* URL Input */}
+              <div style={{ position: 'relative' }}>
+                <Link size={12} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="url"
+                  placeholder={nativeLanguage === 'es' ? 'URL de origen (opcional)' : 'Source URL (optional)'}
+                  value={submitUrl}
+                  onChange={(e) => setSubmitUrl(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'var(--bg-app)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '8px 12px 8px 28px',
+                    fontSize: '12px',
+                    color: 'var(--text-primary)',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Content Paste area */}
+              <textarea
+                placeholder={
+                  nativeLanguage === 'es' 
+                    ? 'Pega el texto del artículo aquí (el servidor usará Gemini para resumirlo y traducirlo en 3 niveles)... *' 
+                    : 'Paste article content text here (the backend will level-adapt & translate it via Gemini)... *'
+                }
+                value={submitContent}
+                onChange={(e) => setSubmitContent(e.target.value)}
+                required
+                rows={4}
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-app)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  resize: 'vertical'
+                }}
+              />
+
+              {submitError && (
+                <div style={{ fontSize: '11px', color: 'var(--danger)', fontWeight: '600' }}>
+                  ⚠️ {submitError}
+                </div>
+              )}
+
+              {submitSuccess && (
+                <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Check size={12} />
+                  <span>{nativeLanguage === 'es' ? '¡Artículo publicado con éxito!' : 'Article submitted successfully!'}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting || submitSuccess}
+                style={{
+                  background: 'var(--primary-gradient)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '10px',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  color: 'white',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                {submitting ? (
+                  <>
+                    <div style={{ width: '12px', height: '12px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'voicePulse 0.5s infinite' }}></div>
+                    <span>{nativeLanguage === 'es' ? 'Procesando artículo...' : 'Adapting article summaries...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={13} />
+                    <span>{nativeLanguage === 'es' ? 'Publicar en la Comunidad' : 'Publish to Feed'}</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Main Content Area */}
       {loading ? (
@@ -232,7 +526,19 @@ export const NewsModule: React.FC = () => {
                 }}>
                   {item.category}
                 </span>
-                <BookOpen size={14} color="var(--text-muted)" />
+                
+                {/* Optional source link icon */}
+                {item.submitted_url && (
+                  <a 
+                    href={item.submitted_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', textDecoration: 'none' }}
+                  >
+                    <Link size={11} />
+                    <span>{nativeLanguage === 'es' ? 'Fuente' : 'Source'}</span>
+                  </a>
+                )}
               </div>
 
               {/* Title */}
@@ -254,67 +560,69 @@ export const NewsModule: React.FC = () => {
               </div>
 
               {/* Vocabulary cards spotlight */}
-              <div style={{ marginTop: '6px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  🔑 {nativeLanguage === 'es' ? 'Vocabulario Clave' : 'Key Vocabulary'}
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {item.vocab.map((v, idx) => (
-                    <div key={idx} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      background: 'var(--bg-app)',
-                      border: '1px solid var(--border)',
-                      padding: '8px 12px',
-                      borderRadius: '10px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button 
-                          onClick={() => speakWord(v.word)}
+              {item.vocab && item.vocab.length > 0 && (
+                <div style={{ marginTop: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>
+                    🔑 {nativeLanguage === 'es' ? 'Vocabulario Clave' : 'Key Vocabulary'}
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {item.vocab.map((v, idx) => (
+                      <div key={idx} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: 'var(--bg-app)',
+                        border: '1px solid var(--border)',
+                        padding: '8px 12px',
+                        borderRadius: '10px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <button 
+                            onClick={() => speakWord(v.word)}
+                            style={{
+                              background: 'var(--surface)',
+                              border: 'none',
+                              color: 'var(--primary)',
+                              padding: '4px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <Volume2 size={14} />
+                          </button>
+                          <span style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text-primary)' }}>{v.word}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>→</span>
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{v.translation}</span>
+                        </div>
+                        
+                        {/* Save Word Icon */}
+                        <button
+                          onClick={() => toggleSaveWord(v.word, v.translation)}
                           style={{
-                            background: 'var(--surface)',
+                            background: isSaved(v.word) ? 'var(--success-glow)' : 'transparent',
                             border: 'none',
-                            color: 'var(--primary)',
-                            padding: '4px',
-                            borderRadius: '6px',
+                            color: isSaved(v.word) ? 'var(--success)' : 'var(--text-muted)',
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            transition: 'all 0.2s ease'
                           }}
                         >
-                          <Volume2 size={14} />
+                          {isSaved(v.word) ? <Check size={14} /> : <Plus size={14} />}
                         </button>
-                        <span style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text-primary)' }}>{v.word}</span>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>→</span>
-                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{v.translation}</span>
                       </div>
-                      
-                      {/* Save Word Icon */}
-                      <button
-                        onClick={() => toggleSaveWord(v.word, v.translation)}
-                        style={{
-                          background: isSaved(v.word) ? 'var(--success-glow)' : 'transparent',
-                          border: 'none',
-                          color: isSaved(v.word) ? 'var(--success)' : 'var(--text-muted)',
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        {isSaved(v.word) ? <Check size={14} /> : <Plus size={14} />}
-                      </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
             </div>
           ))}

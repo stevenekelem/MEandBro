@@ -29,7 +29,8 @@ export const ChatModule: React.FC = () => {
     addChatMessage, 
     clearChatHistory, 
     speechRate, 
-    addPronunciationAttempt 
+    addPronunciationAttempt,
+    savedVocabulary
   } = useApp();
 
   const [activeSubMode, setActiveSubMode] = useState<'chat' | 'pronounce'>('chat');
@@ -39,6 +40,7 @@ export const ChatModule: React.FC = () => {
   const [speechSupported, setSpeechSupported] = useState(true);
 
   // Pronunciation practice states
+  const [phraseSource, setPhraseSource] = useState<'standard' | 'vocabulary'>('standard');
   const [selectedPhraseIdx, setSelectedPhraseIdx] = useState(0);
   const [pronounceTranscript, setPronounceTranscript] = useState('');
   const [scoreResult, setScoreResult] = useState<{ score: number; feedback: string; corrections?: string[] } | null>(null);
@@ -49,7 +51,17 @@ export const ChatModule: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  const phrases = targetLanguage === 'es' ? PRACTICE_PHRASES.es : PRACTICE_PHRASES.en;
+  // Compute available phrases based on source
+  const phrases = React.useMemo(() => {
+    if (phraseSource === 'vocabulary' && savedVocabulary.length > 0) {
+      return savedVocabulary.map(v => ({
+        text: v.word,
+        description: v.translation
+      }));
+    }
+    return targetLanguage === 'es' ? PRACTICE_PHRASES.es : PRACTICE_PHRASES.en;
+  }, [phraseSource, savedVocabulary, targetLanguage]);
+
 
   // Auto-scroll chat history
   useEffect(() => {
@@ -197,17 +209,23 @@ export const ChatModule: React.FC = () => {
     }
   };
 
-  // Sync active phrase when selection or target language changes
+  // Sync active phrase when selection or target language or phrases changes
   useEffect(() => {
-    if (phrases && phrases[selectedPhraseIdx]) {
+    if (phrases && phrases.length > 0) {
+      const idx = selectedPhraseIdx >= phrases.length ? 0 : selectedPhraseIdx;
+      if (selectedPhraseIdx >= phrases.length) {
+        setSelectedPhraseIdx(0);
+      }
       setActivePhrase({
-        text: phrases[selectedPhraseIdx].text,
-        description: phrases[selectedPhraseIdx].description
+        text: phrases[idx].text,
+        description: phrases[idx].description
       });
       setPronounceTranscript('');
       setScoreResult(null);
+    } else {
+      setActivePhrase({ text: '', description: '' });
     }
-  }, [selectedPhraseIdx, targetLanguage]);
+  }, [selectedPhraseIdx, targetLanguage, phrases]);
 
   // Generate dynamic level-scaled phrase from Gemini
   const handleGenerateAIPhrase = async () => {
@@ -592,6 +610,57 @@ export const ChatModule: React.FC = () => {
             <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--primary)', textTransform: 'uppercase' }}>
               🎯 {nativeLanguage === 'es' ? 'Frase de Práctica' : 'Practice Drill'}
             </span>
+            
+            {/* Phrase Source Toggle */}
+            <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-app)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '2px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPhraseSource('standard');
+                  setSelectedPhraseIdx(0);
+                  setPronounceTranscript('');
+                  setScoreResult(null);
+                }}
+                style={{
+                  flex: 1,
+                  background: phraseSource === 'standard' ? 'var(--primary)' : 'transparent',
+                  color: phraseSource === 'standard' ? 'white' : 'var(--text-secondary)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '6px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {nativeLanguage === 'es' ? 'Estándar' : 'Standard'}
+              </button>
+              <button
+                type="button"
+                disabled={savedVocabulary.length === 0}
+                onClick={() => {
+                  setPhraseSource('vocabulary');
+                  setSelectedPhraseIdx(0);
+                  setPronounceTranscript('');
+                  setScoreResult(null);
+                }}
+                style={{
+                  flex: 1,
+                  background: phraseSource === 'vocabulary' ? 'var(--primary)' : 'transparent',
+                  color: savedVocabulary.length === 0 ? 'var(--text-muted)' : phraseSource === 'vocabulary' ? 'white' : 'var(--text-secondary)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '6px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: savedVocabulary.length === 0 ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {nativeLanguage === 'es' ? 'Vocabulario Guardado' : 'Starred Vocab'} ({savedVocabulary.length})
+              </button>
+            </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <select

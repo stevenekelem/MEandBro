@@ -5,12 +5,13 @@ import { Onboarding } from './components/Onboarding';
 import { NewsModule } from './components/NewsModule';
 import { LiteratureModule } from './components/LiteratureModule';
 import { ChatModule } from './components/ChatModule';
-import { SettingsModule } from './components/SettingsModule';
-import { Newspaper, BookOpen, MessageSquare, User, Volume2, Languages, X } from 'lucide-react';
+import { VocabularyModule } from './components/VocabularyModule';
+import { TranslatorModule } from './components/TranslatorModule';
+import { Newspaper, BookOpen, MessageSquare, Volume2, Languages, X, GraduationCap } from 'lucide-react';
 
 const App: React.FC = () => {
   const { onboarded, nativeLanguage } = useApp();
-  const [activeTab, setActiveTab] = useState<'news' | 'literature' | 'chat' | 'settings'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'literature' | 'chat' | 'translate' | 'vocabulary'>('news');
   const [currentTime, setCurrentTime] = useState('');
 
   // Floating selection translation hook
@@ -165,10 +166,11 @@ const App: React.FC = () => {
               {activeTab === 'news' && <NewsModule />}
               {activeTab === 'literature' && <LiteratureModule />}
               {activeTab === 'chat' && <ChatModule />}
-              {activeTab === 'settings' && <SettingsModule />}
+              {activeTab === 'translate' && <TranslatorModule />}
+              {activeTab === 'vocabulary' && <VocabularyModule />}
             </div>
 
-            {/* Bottom Nav Bar */}
+            {/* Bottom Nav Bar (strictly 5 tabs rule) */}
             <div className="bottom-nav">
               <button 
                 onClick={() => setActiveTab('news')}
@@ -204,12 +206,23 @@ const App: React.FC = () => {
               </button>
 
               <button 
-                onClick={() => setActiveTab('settings')}
-                className={`nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
+                onClick={() => setActiveTab('translate')}
+                className={`nav-tab ${activeTab === 'translate' ? 'active' : ''}`}
               >
-                <User />
+                <Languages />
                 <span className="nav-tab-label">
-                  {nativeLanguage === 'es' ? 'Progreso' : 'Progress'}
+                  {nativeLanguage === 'es' ? 'Traducir' : 'Translate'}
+                </span>
+                <div className="nav-indicator"></div>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('vocabulary')}
+                className={`nav-tab ${activeTab === 'vocabulary' ? 'active' : ''}`}
+              >
+                <GraduationCap />
+                <span className="nav-tab-label">
+                  {nativeLanguage === 'es' ? 'Vocabulario' : 'Vocabulary'}
                 </span>
                 <div className="nav-indicator"></div>
               </button>

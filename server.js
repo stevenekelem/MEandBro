@@ -509,6 +509,194 @@ Only output a valid JSON array. Do not wrap in markdown code blocks.`;
   }
 });
 
+// 4. Vocabulary Detail Enricher Endpoint
+app.post('/api/vocab/enrich', async (req, res) => {
+  const { word, targetLanguage = 'es' } = req.body;
+  if (!word) {
+    return res.status(400).json({ error: 'Word is required.' });
+  }
+
+  const targetName = targetLanguage === 'es' ? 'Spanish' : 'English';
+  const nativeName = targetLanguage === 'es' ? 'English' : 'Spanish';
+
+  if (!ai) {
+    console.log('[Mock Vocab Enrich] Enriching word:', word);
+    // Basic offline fallback
+    const wordLower = word.toLowerCase().trim();
+    const isVerb = wordLower.endsWith('ar') || wordLower.endsWith('er') || wordLower.endsWith('ir') || wordLower.endsWith('ate') || wordLower.endsWith('run') || wordLower.endsWith('speak');
+    return res.json({
+      part_of_speech: isVerb ? 'verb' : 'noun',
+      definition: targetLanguage === 'es' ? `A common word meaning "${word}"` : `Una palabra común que significa "${word}"`,
+      example_sentence: targetLanguage === 'es' ? `Me gusta usar la palabra ${word} en mi vida diaria.` : `I like to use the word ${word} in my daily life.`,
+      example_translation: targetLanguage === 'es' ? `I like to use the word ${word} in my daily life.` : `Me gusta usar la palabra ${word} en mi vida diaria.`,
+      conjugations: isVerb ? {
+        present: {
+          yo: wordLower.endsWith('ar') ? wordLower.slice(0, -2) + 'o' : wordLower.endsWith('er') ? wordLower.slice(0, -2) + 'o' : wordLower + ' (irregular)',
+          tu: wordLower.endsWith('ar') ? wordLower.slice(0, -2) + 'as' : wordLower.endsWith('er') ? wordLower.slice(0, -2) + 'es' : wordLower + ' (irregular)',
+          el_ella: wordLower.endsWith('ar') ? wordLower.slice(0, -2) + 'a' : wordLower.endsWith('er') ? wordLower.slice(0, -2) + 'e' : wordLower + ' (irregular)',
+          nosotros: wordLower.endsWith('ar') ? wordLower.slice(0, -2) + 'amos' : wordLower.endsWith('er') ? wordLower.slice(0, -2) + 'emos' : wordLower + ' (irregular)',
+          ellos_ellas: wordLower.endsWith('ar') ? wordLower.slice(0, -2) + 'an' : wordLower.endsWith('er') ? wordLower.slice(0, -2) + 'en' : wordLower + ' (irregular)'
+        }
+      } : null
+    });
+  }
+
+  try {
+    const systemPrompt = `You are a professional dictionary builder and language teacher. 
+    Analyze the word/phrase provided in ${targetName} and return a JSON object with details. 
+    The learner's native language is ${nativeName}. 
+    
+    Fields required in response JSON:
+    1. "part_of_speech": a string (e.g., "noun", "verb", "adjective", "adverb", "phrase", "pronoun", "preposition", "conjunction"). Must be lowercase.
+    2. "definition": a clear definition (max 2 sentences) in the user's native language (${nativeName}).
+    3. "example_sentence": a simple conversational example sentence using this word/phrase in the target language (${targetName}).
+    4. "example_translation": a natural translation of the example sentence in the user's native language (${nativeName}).
+    5. "conjugations": if and only if the word is a verb, return standard present tense conjugations for subjects yo, tu, el_ella, nosotros, ellos_ellas. For non-verbs or phrases, return null. The conjugation object MUST follow this exact schema:
+    {
+      "present": {
+        "yo": "...",
+        "tu": "...",
+        "el_ella": "...",
+        "nosotros": "...",
+        "ellos_ellas": "..."
+      }
+    }
+    
+    Do not output any markdown code blocks. Only return a valid JSON object.`;
+
+    const prompt = `Analyze the word/phrase: "${word}". Target Language: ${targetName}, Native Language: ${nativeName}.`;
+
+    const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'];
+    let responseText = '';
+    let success = false;
+    let lastError = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`[Vocab Enrich] Trying model: ${modelName}`);
+        const model = ai.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemPrompt
+        });
+
+        const result = await model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.2,
+          }
+        });
+
+        const response = await result.response;
+        responseText = response.text();
+        success = true;
+        break;
+      } catch (err) {
+        console.warn(`[Vocab Enrich] Model ${modelName} failed:`, err.message);
+        lastError = err;
+      }
+    }
+
+    if (!success) {
+      throw lastError;
+    }
+
+    const data = JSON.parse(responseText);
+    res.json(data);
+  } catch (error) {
+    console.error('Gemini Vocab Enrich Error:', error);
+    res.status(500).json({ error: 'Failed to enrich vocab word.', details: error.message });
+  }
+});
+
+// 5. News Submit Endpoint (summarizes submitted text block offline or via Gemini)
+app.post('/api/news/submit', async (req, res) => {
+  const { title, category, content, targetLanguage = 'es' } = req.body;
+  if (!title || !content || !category) {
+    return res.status(400).json({ error: 'Title, category, and content are required.' });
+  }
+
+  const targetName = targetLanguage === 'es' ? 'Spanish' : 'English';
+  const nativeName = targetLanguage === 'es' ? 'English' : 'Spanish';
+
+  if (!ai) {
+    console.log('[Mock News Submit] Summarizing text:', title);
+    return res.json({
+      summary_basic: targetLanguage === 'es'
+        ? `Esto es un resumen básico de ${title}. [This is a basic summary of ${title}.] Es muy interesante. [It is very interesting.]`
+        : `This is a basic summary of ${title}. [Esto es un resumen básico de ${title}.] It is very interesting. [Es muy interesante.]`,
+      summary_intermediate: targetLanguage === 'es'
+        ? `Este es un resumen intermedio sobre la noticia titulada "${title}". Habla sobre temas de ${category} y está adaptado para estudiantes.`
+        : `This is an intermediate summary of the news article titled "${title}". It discusses ${category} topics and is adapted for learners.`,
+      summary_advanced: targetLanguage === 'es'
+        ? `Este artículo de nivel avanzado examina en profundidad los acontecimientos descritos en "${title}". Ofrece un análisis exhaustivo de ${category}.`
+        : `This advanced-level article provides an in-depth examination of the events detailed in "${title}". It offers a comprehensive analysis of ${category}.`,
+      vocab: [
+        { word: targetLanguage === 'es' ? 'noticia' : 'news', translation: targetLanguage === 'es' ? 'news' : 'noticia' },
+        { word: targetLanguage === 'es' ? 'temas' : 'topics', translation: targetLanguage === 'es' ? 'topics' : 'temas' },
+        { word: targetLanguage === 'es' ? 'estudiantes' : 'students', translation: targetLanguage === 'es' ? 'students' : 'estudiantes' }
+      ]
+    });
+  }
+
+  try {
+    const systemPrompt = `You are a creative editor for a language learning app. 
+    You will be given the title, category, and raw text content of a news article.
+    You must generate three level-adapted summaries in the target language (${targetName}) and extract 3 key vocabulary words.
+    
+    Fields required in response JSON:
+    1. "summary_basic": 3-4 very short sentences in ${targetName}. Immediately follow each sentence with its literal translation in ${nativeName} inside square brackets, e.g. "Sentence. [Translation.]"
+    2. "summary_intermediate": A cohesive intermediate paragraph (4-6 sentences) in ${targetName} without translations.
+    3. "summary_advanced": A sophisticated advanced paragraph (5-8 sentences) in ${targetName} without translations.
+    4. "vocab": An array of exactly 3 key vocabulary words/phrases from the article, as objects: {"word": "in ${targetName}", "translation": "in ${nativeName}"}.
+    
+    Do not output any markdown code blocks. Only return a valid JSON object.`;
+
+    const prompt = `Title: "${title}"\nCategory: "${category}"\nContent:\n${content}`;
+
+    const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'];
+    let responseText = '';
+    let success = false;
+    let lastError = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`[News Submit] Trying model: ${modelName}`);
+        const model = ai.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemPrompt
+        });
+
+        const result = await model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.3,
+          }
+        });
+
+        const response = await result.response;
+        responseText = response.text();
+        success = true;
+        break;
+      } catch (err) {
+        console.warn(`[News Submit] Model ${modelName} failed:`, err.message);
+        lastError = err;
+      }
+    }
+
+    if (!success) {
+      throw lastError;
+    }
+
+    const data = JSON.parse(responseText);
+    res.json(data);
+  } catch (error) {
+    console.error('Gemini News Submit Error:', error);
+    res.status(500).json({ error: 'Failed to analyze and summarize submitted article.', details: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Spanglish Backend Proxy running on port ${PORT}`);
 });

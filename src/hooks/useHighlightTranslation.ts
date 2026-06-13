@@ -1,6 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
+import { lookupLocalDictionary } from '../utils/localDictionary';
+
+const ENGLISH_TRIGGERS = ['the', 'and', 'of', 'to', 'is', 'you', 'that', 'it', 'are', 'have', 'with', 'for', 'this', 'they'];
+const SPANISH_TRIGGERS = ['el', 'la', 'los', 'las', 'de', 'que', 'en', 'un', 'una', 'y', 'es', 'son', 'con', 'por', 'para', 'este', 'esta'];
+
+function detectLanguage(text: string, targetLanguage: string): { from: string, to: string } {
+  const words = text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡]/g,"").split(/\s+/);
+  let enCount = 0;
+  let esCount = 0;
+  for (const w of words) {
+    if (ENGLISH_TRIGGERS.includes(w)) enCount++;
+    if (SPANISH_TRIGGERS.includes(w)) esCount++;
+  }
+  if (enCount > esCount) {
+    return { from: 'en', to: 'es' };
+  } else if (esCount > enCount) {
+    return { from: 'es', to: 'en' };
+  }
+  return targetLanguage === 'es' ? { from: 'es', to: 'en' } : { from: 'en', to: 'es' };
+}
+
 
 // High-speed local dictionary for instant lookup of words in our pre-baked stories
 const LOCAL_DICTIONARY: Record<string, string> = {
@@ -143,55 +164,84 @@ export const useHighlightTranslation = () => {
     
     const queryWord = result.text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡]/g,"").trim();
     
-    // 1. Check local dictionary first for instant performance
-    if (LOCAL_DICTIONARY[queryWord]) {
+    // 1. Check local lookup dictionary first (both the large compiled map and module-specific words)
+    const localMatch = lookupLocalDictionary(queryWord) || LOCAL_DICTIONARY[queryWord];
+    if (localMatch) {
       setResult(prev => ({
         ...prev,
-        translation: LOCAL_DICTIONARY[queryWord],
+        translation: localMatch,
         isLoading: false
       }));
-      saveWord(result.text, LOCAL_DICTIONARY[queryWord], 'Dictionary');
+      saveWord(result.text, localMatch, 'Dictionary');
       incrementWordsTranslated();
       return;
     }
 
-    // 2. Fetch from Express backend proxy
     setResult(prev => ({ ...prev, isLoading: true }));
-    try {
-      const prompt = `Translate this phrase/word precisely from ${targetLanguage === 'es' ? 'English to Spanish' : 'Spanish to English'}. Return ONLY the direct translation, no extra descriptions or sentences: "${result.text}"`;
-      
-      const response = await fetch('/api/tutor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: prompt,
-          history: [],
-          level: 'advanced', // use advanced for clean translations
-          nativeLanguage: targetLanguage === 'es' ? 'es' : 'en' // flip native lang context for tutor response
-        })
-      });
 
-      const data = await response.json();
-      if (data.text) {
-        const cleanTranslation = data.text.replace(/^["]|["]$/g, '').trim();
+    // 2. Fetch from MyMemory translation API (elevated free tier using email param)
+    const { from, to } = detectLanguage(result.text, targetLanguage);
+    const langpair = `${from}|${to}`;
+    
+    try {
+      const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(result.text)}&langpair=${langpair}&de=19515@gmail.com`;
+      const myMemoryResponse = await fetch(myMemoryUrl);
+      if (!myMemoryResponse.ok) throw new Error('MyMemory API error');
+      
+      const myMemoryData = await myMemoryResponse.json();
+      const translatedText = myMemoryData?.responseData?.translatedText;
+      
+      if (translatedText && !translatedText.toLowerCase().includes('mymemory warning')) {
         setResult(prev => ({
           ...prev,
-          translation: cleanTranslation,
+          translation: translatedText,
           isLoading: false
         }));
-        saveWord(result.text, cleanTranslation, 'Highlights');
+        saveWord(result.text, translatedText, 'MyMemory');
         incrementWordsTranslated();
-      } else {
-        throw new Error('No translation text returned');
+        return;
       }
-    } catch (error) {
-      console.error('Translation error:', error);
-      // Fallback display
-      setResult(prev => ({
-        ...prev,
-        translation: targetLanguage === 'es' ? '[Traducción no disponible]' : '[Translation unavailable]',
-        isLoading: false
-      }));
+      throw new Error('Invalid translation from MyMemory');
+    } catch (myMemoryError) {
+      console.warn('MyMemory fallback failed, trying Gemini...', myMemoryError);
+      
+      // 3. Fallback to Express backend proxy (Gemini API)
+      try {
+        const prompt = `Translate this phrase/word precisely from ${from === 'es' ? 'Spanish to English' : 'English to Spanish'}. Return ONLY the direct translation, no extra descriptions or sentences: "${result.text}"`;
+        
+        const response = await fetch('/api/tutor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: prompt,
+            history: [],
+            level: 'advanced',
+            nativeLanguage: targetLanguage === 'es' ? 'es' : 'en'
+          })
+        });
+
+        const data = await response.json();
+        if (data.text) {
+          const cleanTranslation = data.text.replace(/^["]|["]$/g, '').trim();
+          setResult(prev => ({
+            ...prev,
+            translation: cleanTranslation,
+            isLoading: false
+          }));
+          saveWord(result.text, cleanTranslation, 'Gemini');
+          incrementWordsTranslated();
+        } else {
+          throw new Error('No translation text returned from Gemini');
+        }
+      } catch (geminiError) {
+        console.error('Gemini translation fallback error:', geminiError);
+        // Final fallback display
+        setResult(prev => ({
+          ...prev,
+          translation: targetLanguage === 'es' ? '[Traducción no disponible]' : '[Translation unavailable]',
+          isLoading: false
+        }));
+      }
     }
   };
 

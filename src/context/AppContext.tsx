@@ -7,7 +7,13 @@ export interface VocabWord {
   translation: string;
   timestamp: number;
   category: string;
+  partOfSpeech?: string;
+  definition?: string;
+  exampleSentence?: string;
+  exampleTranslation?: string;
+  conjugations?: any;
 }
+
 
 // Chat message structure
 export interface ChatMessage {
@@ -146,7 +152,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           word: v.word,
           translation: v.translation,
           category: v.category || 'General',
-          timestamp: new Date(v.created_at).getTime()
+          timestamp: new Date(v.created_at).getTime(),
+          partOfSpeech: v.part_of_speech,
+          definition: v.definition,
+          exampleSentence: v.example_sentence,
+          exampleTranslation: v.example_translation,
+          conjugations: v.conjugations
         }));
         setSavedVocabulary(parsedVocab);
         localStorage.setItem('spanglish_vocabulary', JSON.stringify(parsedVocab));
@@ -201,7 +212,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             word: v.word,
             translation: v.translation,
             category: v.category || 'General',
-            created_at: new Date(v.timestamp).toISOString()
+            created_at: new Date(v.timestamp).toISOString(),
+            part_of_speech: v.partOfSpeech,
+            definition: v.definition,
+            example_sentence: v.exampleSentence,
+            example_translation: v.exampleTranslation,
+            conjugations: v.conjugations
           }));
 
         if (toUpload.length > 0) {
@@ -382,22 +398,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Starred Words management
   const saveWord = async (word: string, translation: string, category: string = 'General') => {
     const cleanWord = word.trim();
-    let updatedVocab: VocabWord[] = [];
-    
+    if (!cleanWord) return;
+
+    let alreadyExists = false;
     setSavedVocabulary(prev => {
-      // Avoid duplicate vocabulary words
-      if (prev.some(v => v.word.toLowerCase() === cleanWord.toLowerCase())) {
-        return prev;
-      }
-      const newWord: VocabWord = {
-        word: cleanWord,
-        translation: translation.trim(),
-        timestamp: Date.now(),
-        category
-      };
-      updatedVocab = [newWord, ...prev];
-      localStorage.setItem('spanglish_vocabulary', JSON.stringify(updatedVocab));
-      return updatedVocab;
+      alreadyExists = prev.some(v => v.word.toLowerCase() === cleanWord.toLowerCase());
+      return prev;
+    });
+    if (alreadyExists) return;
+
+    const newWord: VocabWord = {
+      word: cleanWord,
+      translation: translation.trim(),
+      timestamp: Date.now(),
+      category
+    };
+
+    setSavedVocabulary(prev => {
+      const updated = [newWord, ...prev];
+      localStorage.setItem('spanglish_vocabulary', JSON.stringify(updated));
+      return updated;
     });
 
     if (user) {
@@ -412,6 +432,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error('Error saving vocabulary to cloud:', err);
       }
     }
+
+    // Trigger background enrichment via Express backend
+    (async () => {
+      try {
+        const response = await fetch('/api/vocab/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: cleanWord, targetLanguage })
+        });
+        
+        if (response.ok) {
+          const enriched = await response.json();
+          
+          // Update local state
+          setSavedVocabulary(prev => {
+            const updated = prev.map(item => {
+              if (item.word.toLowerCase() === cleanWord.toLowerCase()) {
+                return {
+                  ...item,
+                  partOfSpeech: enriched.part_of_speech,
+                  definition: enriched.definition,
+                  exampleSentence: enriched.example_sentence,
+                  exampleTranslation: enriched.example_translation,
+                  conjugations: enriched.conjugations
+                };
+              }
+              return item;
+            });
+            localStorage.setItem('spanglish_vocabulary', JSON.stringify(updated));
+            return updated;
+          });
+
+          // Update Cloud database
+          if (user) {
+            await supabase
+              .from('vocabulary')
+              .update({
+                part_of_speech: enriched.part_of_speech,
+                definition: enriched.definition,
+                example_sentence: enriched.example_sentence,
+                example_translation: enriched.example_translation,
+                conjugations: enriched.conjugations
+              })
+              .eq('user_id', user.id)
+              .eq('word', cleanWord);
+          }
+        }
+      } catch (enrichErr) {
+        console.error('Failed to enrich vocabulary word in background:', cleanWord, enrichErr);
+      }
+    })();
   };
 
   const removeWord = async (word: string) => {
