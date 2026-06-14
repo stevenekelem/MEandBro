@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
 import { Capacitor } from '@capacitor/core';
 import { Send, Mic, MicOff, Volume2, Sparkles, Languages, CheckCircle2, AlertCircle } from 'lucide-react';
+import { getApiUrl } from '../utils/api';
 
 // Selected practice phrases based on target language
 const PRACTICE_PHRASES = {
@@ -183,7 +184,7 @@ export const ChatModule: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/tutor', {
+      const response = await fetch(getApiUrl('/api/tutor'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -233,7 +234,7 @@ export const ChatModule: React.FC = () => {
     setPronounceTranscript('');
     setScoreResult(null);
     try {
-      const response = await fetch('/api/pronounce/generate', {
+      const response = await fetch(getApiUrl('/api/pronounce/generate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -265,7 +266,7 @@ export const ChatModule: React.FC = () => {
     const targetText = activePhrase.text;
 
     try {
-      const response = await fetch('/api/pronounce', {
+      const response = await fetch(getApiUrl('/api/pronounce'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

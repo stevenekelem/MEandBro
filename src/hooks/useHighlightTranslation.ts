@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
 import { lookupLocalDictionary } from '../utils/localDictionary';
+import { getApiUrl } from '../utils/api';
 
 const ENGLISH_TRIGGERS = ['the', 'and', 'of', 'to', 'is', 'you', 'that', 'it', 'are', 'have', 'with', 'for', 'this', 'they'];
 const SPANISH_TRIGGERS = ['el', 'la', 'los', 'las', 'de', 'que', 'en', 'un', 'una', 'y', 'es', 'son', 'con', 'por', 'para', 'este', 'esta'];
@@ -209,7 +210,7 @@ export const useHighlightTranslation = () => {
       try {
         const prompt = `Translate this phrase/word precisely from ${from === 'es' ? 'Spanish to English' : 'English to Spanish'}. Return ONLY the direct translation, no extra descriptions or sentences: "${result.text}"`;
         
-        const response = await fetch('/api/tutor', {
+        const response = await fetch(getApiUrl('/api/tutor'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -6,6 +6,7 @@ import {
   Share2, X, Send, Link, FileText, Lock 
 } from 'lucide-react';
 import { speakTextWithBestVoice } from '../utils/speech';
+import { getApiUrl } from '../utils/api';
 
 interface NewsItem {
   id: string;
@@ -39,7 +40,7 @@ export const NewsModule: React.FC = () => {
     
     try {
       // 1. Fetch daily news from Express proxy
-      const response = await fetch('/api/news', {
+      const response = await fetch(getApiUrl('/api/news'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nativeLanguage, level })
@@ -195,7 +196,7 @@ export const NewsModule: React.FC = () => {
       const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
       
       // 1. Call proxy backend to summarize and extract vocab
-      const response = await fetch('/api/news/submit', {
+      const response = await fetch(getApiUrl('/api/news/submit'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

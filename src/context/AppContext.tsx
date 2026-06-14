@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
+import { getApiUrl } from '../utils/api';
 
 // Vocabulary entry structure
 export interface VocabWord {
@@ -436,7 +437,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Trigger background enrichment via Express backend
     (async () => {
       try {
-        const response = await fetch('/api/vocab/enrich', {
+        const response = await fetch(getApiUrl('/api/vocab/enrich'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ word: cleanWord, targetLanguage })
