@@ -2,8 +2,25 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
+
+// Initialize Supabase Client
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+let supabase = null;
+
+if (supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+    console.log('Supabase Client initialized successfully.');
+  } catch (error) {
+    console.error('Failed to initialize Supabase Client:', error);
+  }
+} else {
+  console.warn('Supabase URL or Key is missing. Database operations will fail.');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -694,6 +711,253 @@ app.post('/api/news/submit', async (req, res) => {
   } catch (error) {
     console.error('Gemini News Submit Error:', error);
     res.status(500).json({ error: 'Failed to analyze and summarize submitted article.', details: error.message });
+  }
+});
+
+// --- CRON JOB: Daily News Fetch & Synthesis ---
+app.get('/api/cron/fetch-news', async (req, res) => {
+  // 1. Security Check: Ensure the request comes from Vercel or is authenticated locally
+  const authHeader = req.headers.authorization;
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    console.warn('[Cron Job] Unauthorized request or CRON_SECRET is not configured.');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!supabase) {
+    console.error('[Cron Job] Supabase client is not initialized.');
+    return res.status(500).json({ error: 'Database client not initialized' });
+  }
+
+  try {
+    // 2. Category Selection & Rotation
+    // Categories we support:
+    // Ciencia (science), Cultura (general), Deportes (sports), Tecnología (technology), Global (world), Politics (nation), Finance (business)
+    const categoryMapping = [
+      { gnews: 'science', devto: 'science', spanglish: 'Ciencia' },
+      { gnews: 'general', devto: 'culture', spanglish: 'Cultura' },
+      { gnews: 'sports', devto: 'sports', spanglish: 'Deportes' },
+      { gnews: 'technology', devto: 'technology', spanglish: 'Tecnología' },
+      { gnews: 'world', devto: 'world', spanglish: 'Global' },
+      { gnews: 'nation', devto: 'politics', spanglish: 'Politics' },
+      { gnews: 'business', devto: 'finance', spanglish: 'Finance' }
+    ];
+
+    // Select category based on current hour to rotate them automatically over the course of the day
+    const currentHour = new Date().getUTCHours();
+    const selectedCategoryIndex = currentHour % categoryMapping.length;
+    const activeCategory = categoryMapping[selectedCategoryIndex];
+    console.log(`[Cron Job] Active category: ${activeCategory.spanglish} (GNews: ${activeCategory.gnews}, DEV.to: ${activeCategory.devto})`);
+
+    // 3. Fetch articles from GNews or DEV.to
+    let rawArticles = [];
+    const gnewsApiKey = process.env.GNEWS_API_KEY;
+
+    if (gnewsApiKey && gnewsApiKey !== 'your_gnews_api_key_here') {
+      const gnewsUrl = `https://gnews.io/api/v4/top-headlines?category=${activeCategory.gnews}&lang=en&max=5&apikey=${gnewsApiKey}`;
+      console.log(`[Cron Job] Fetching headlines from GNews: ${gnewsUrl.replace(gnewsApiKey, 'REDACTED')}`);
+      try {
+        const response = await fetch(gnewsUrl);
+        if (!response.ok) {
+          throw new Error(`GNews response status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data && Array.isArray(data.articles)) {
+          rawArticles = data.articles.map(art => ({
+            title: art.title,
+            description: art.description,
+            content: art.content || art.description,
+            url: art.url,
+            source: 'gnews'
+          }));
+        }
+      } catch (err) {
+        console.error('[Cron Job] GNews fetch failed, falling back to DEV.to:', err.message);
+      }
+    }
+
+    // Fallback if rawArticles is empty (GNews key is missing or API call failed)
+    if (rawArticles.length === 0) {
+      const devtoUrl = `https://dev.to/api/articles?tag=${activeCategory.devto}&per_page=5`;
+      console.log(`[Cron Job] Fetching articles from DEV.to: ${devtoUrl}`);
+      try {
+        const response = await fetch(devtoUrl);
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            rawArticles = data.map(art => ({
+              id: art.id,
+              title: art.title,
+              description: art.description,
+              url: art.url,
+              source: 'devto'
+            }));
+          }
+        } else {
+          console.error(`[Cron Job] DEV.to response status: ${response.status}`);
+        }
+      } catch (err) {
+        console.error('[Cron Job] DEV.to fetch failed:', err.message);
+      }
+    }
+
+    if (rawArticles.length === 0) {
+      console.warn('[Cron Job] No articles fetched from any source.');
+      return res.status(200).json({ success: true, message: 'No articles fetched to process.' });
+    }
+
+    // 4. Loop and Synthesize (limit processing to prevent timeouts)
+    const processedArticles = [];
+    let processedCount = 0;
+    const maxArticlesPerRun = 2; // Keep it lightweight to fit within serverless timeout limits
+
+    for (const article of rawArticles) {
+      if (processedCount >= maxArticlesPerRun) {
+        console.log(`[Cron Job] Reached limit of ${maxArticlesPerRun} articles processed this run. Stopping.`);
+        break;
+      }
+
+      // Check if this article URL already exists in Supabase
+      const { data: existing, error: checkError } = await supabase
+        .from('news_articles')
+        .select('id')
+        .eq('submitted_url', article.url)
+        .maybeSingle();
+
+      if (checkError) {
+        console.warn(`[Cron Job] Database check error for URL ${article.url}:`, checkError.message);
+      }
+
+      if (existing) {
+        console.log(`[Cron Job] Article already exists, skipping: "${article.title}" (${article.url})`);
+        continue;
+      }
+
+      console.log(`[Cron Job] Found new article to process: "${article.title}"`);
+
+      // Retrieve full article content if DEV.to, since the list endpoint only has a summary/description
+      let articleText = article.content || article.description || '';
+      if (article.source === 'devto' && article.id) {
+        try {
+          const detailRes = await fetch(`https://dev.to/api/articles/${article.id}`);
+          if (detailRes.ok) {
+            const detail = await detailRes.json();
+            if (detail.body_markdown) {
+              articleText = detail.body_markdown;
+            }
+          }
+        } catch (detailErr) {
+          console.warn(`[Cron Job] Failed to fetch DEV.to details for article ID ${article.id}:`, detailErr.message);
+        }
+      }
+
+      // Clean/truncate article content if it's too long
+      const truncatedText = articleText.substring(0, 3000);
+      if (!truncatedText) {
+        console.warn(`[Cron Job] Empty text content for article "${article.title}". Skipping.`);
+        continue;
+      }
+
+      // 5. Call Gemini to generate summaries and vocabulary
+      if (!ai) {
+        console.warn('[Cron Job] Gemini Client is not initialized. Skipping AI generation.');
+        continue;
+      }
+
+      const systemPrompt = `You are a creative editor for a language learning app called Spanglish.
+You will be given the title and raw text content of a news article.
+You must generate three level-adapted summaries in Spanish (target language) and extract 3 key vocabulary words.
+The learner's native language is English.
+
+Fields required in response JSON:
+1. "summary_basic": 3-4 very short, simple sentences in Spanish. Immediately follow each sentence with its literal translation in English inside square brackets, e.g. "Sentence. [Translation.]"
+2. "summary_intermediate": A cohesive intermediate paragraph (4-6 sentences) in Spanish with moderate vocabulary and idioms. No translations or brackets.
+3. "summary_advanced": A sophisticated advanced paragraph (5-8 sentences) in Spanish using native-level vocabulary and complex clauses. No translations or brackets.
+4. "vocab": An array of exactly 3 key vocabulary words/phrases from the article, as objects: {"word": "word in Spanish", "translation": "translation in English"}.
+
+Only return a valid JSON object. Do not wrap in markdown code blocks.`;
+
+      const prompt = `Title: "${article.title}"\nContent:\n${truncatedText}`;
+
+      let parsedAiData = null;
+      const modelsToTry = [
+        'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 
+        'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 
+        'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'
+      ];
+
+      for (const modelName of modelsToTry) {
+        try {
+          console.log(`[Cron Job] Requesting Gemini model: ${modelName}`);
+          const model = ai.getGenerativeModel({
+            model: modelName,
+            systemInstruction: systemPrompt
+          });
+
+          const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.3,
+            }
+          });
+
+          const response = await result.response;
+          const responseText = response.text();
+          parsedAiData = JSON.parse(responseText);
+          break;
+        } catch (err) {
+          console.warn(`[Cron Job] Model ${modelName} failed:`, err.message);
+        }
+      }
+
+      if (!parsedAiData) {
+        console.error(`[Cron Job] All Gemini models failed to generate content for article: "${article.title}"`);
+        continue;
+      }
+
+      // Validate parsed AI data structure
+      if (!parsedAiData.summary_basic || !parsedAiData.summary_intermediate || !parsedAiData.summary_advanced || !Array.isArray(parsedAiData.vocab)) {
+        console.error('[Cron Job] Gemini response did not match the expected schema:', parsedAiData);
+        continue;
+      }
+
+      // 6. Insert into Supabase
+      console.log(`[Cron Job] Saving synthesized article to Supabase: "${article.title}"`);
+      const { error: insertError } = await supabase
+        .from('news_articles')
+        .insert({
+          title: article.title,
+          category: activeCategory.spanglish,
+          summary_basic: parsedAiData.summary_basic,
+          summary_intermediate: parsedAiData.summary_intermediate,
+          summary_advanced: parsedAiData.summary_advanced,
+          vocab: parsedAiData.vocab,
+          submitted_url: article.url
+        });
+
+      if (insertError) {
+        console.error(`[Cron Job] Failed to save article to Supabase:`, insertError.message);
+      } else {
+        processedCount++;
+        processedArticles.push({
+          title: article.title,
+          category: activeCategory.spanglish,
+          url: article.url
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Sync completed. Processed ${processedCount} new articles in category ${activeCategory.spanglish}.`,
+      processedArticles
+    });
+
+  } catch (error) {
+    console.error('[Cron Job] Error executing news sync:', error);
+    return res.status(500).json({ error: 'Internal Server Error during news sync', details: error.message });
   }
 });
 
