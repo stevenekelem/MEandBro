@@ -14,7 +14,7 @@ export const getApiUrl = (path: string): string => {
   if (capacitor) {
     const platform = capacitor.getPlatform?.();
     if (platform === 'android' || platform === 'ios') {
-      return `http://192.168.1.65:3001/${cleanPath}`;
+      return `https://spanglish-two.vercel.app/${cleanPath}`;
     }
   }
 
