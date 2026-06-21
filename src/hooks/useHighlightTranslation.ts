@@ -149,15 +149,134 @@ export const useHighlightTranslation = () => {
 
   const closeBubble = useCallback(() => {
     setResult(prev => ({ ...prev, isOpen: false }));
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch (e) {}
   }, []);
 
-  // Listen to selection changes
+  // Single click/tap handler for instant word lookup
+  const handleWordClick = useCallback((e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    
+    // Check if the click target is interactive or within the bubble itself
+    if (
+      target.closest('.translate-bubble') ||
+      target.closest('button') ||
+      target.closest('a') ||
+      target.closest('select') ||
+      target.closest('input') ||
+      target.closest('textarea')
+    ) {
+      return;
+    }
+
+    // Only listen to clicks inside the main scrollable screen-content
+    if (!target.closest('.screen-content')) {
+      return;
+    }
+
+    // Check if there is an active non-collapsed text selection.
+    // If so, let handleSelection handle it (e.g. they dragged text).
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      return;
+    }
+
+    let word = '';
+    let rect: DOMRect | null = null;
+
+    try {
+      let textNode: Node | null = null;
+      let offset = 0;
+
+      // Check standard and non-standard APIs
+      // @ts-ignore
+      if (document.caretPositionFromPoint) {
+        // @ts-ignore
+        const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+        if (pos) {
+          textNode = pos.offsetNode;
+          offset = pos.offset;
+        }
+      } else if (document.caretRangeFromPoint) {
+        const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+        if (range) {
+          textNode = range.startContainer;
+          offset = range.startOffset;
+        }
+      }
+
+      if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+        const text = textNode.textContent || '';
+        
+        // Extract the boundaries of the tapped word around the caret offset.
+        // We include common letters, accented Spanish characters, apostrophes, and hyphens.
+        const leftText = text.substring(0, offset);
+        const rightText = text.substring(offset);
+        
+        const leftMatch = leftText.match(/[\wáéíóúüñÁÉÍÓÚÜÑ'-]*$/);
+        const rightMatch = rightText.match(/^[\wáéíóúüñÁÉÍÓÚÜÑ'-]*/);
+        
+        const leftWord = leftMatch ? leftMatch[0] : '';
+        const rightWord = rightMatch ? rightMatch[0] : '';
+        
+        word = (leftWord + rightWord).trim();
+
+        if (word && word.length > 0 && word.length < 50) {
+          // Create a temporary range to find the exact bounding rect of the clicked word
+          const wordRange = document.createRange();
+          const startIdx = offset - leftWord.length;
+          const endIdx = offset + rightWord.length;
+          wordRange.setStart(textNode, startIdx);
+          wordRange.setEnd(textNode, endIdx);
+          rect = wordRange.getBoundingClientRect();
+        }
+      }
+    } catch (err) {
+      console.warn('Caret extraction failed:', err);
+    }
+
+    // Clean punctuation around the extracted word
+    const cleanedWord = word.replace(/^[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡'"]+|[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡'"]+$/g, '');
+    if (!cleanedWord || cleanedWord.length < 2) {
+      // If clicked outside text or empty area, close the translation bubble
+      closeBubble();
+      return;
+    }
+
+    if (rect) {
+      const simulator = document.querySelector('.screen-content');
+      let x = rect.left + rect.width / 2;
+      let y = rect.top - 10; // 10px above selection
+
+      if (simulator) {
+        const simRect = simulator.getBoundingClientRect();
+        x = x - simRect.left;
+        y = y - simRect.top + simulator.scrollTop;
+      }
+
+      setResult({
+        text: cleanedWord,
+        translation: '',
+        x,
+        y,
+        isOpen: true,
+        isLoading: false,
+      });
+    }
+  }, [closeBubble]);
+
+  // Listen to selection changes and clicks
   useEffect(() => {
     document.addEventListener('mouseup', handleSelection);
+    document.addEventListener('touchend', handleSelection);
+    document.addEventListener('click', handleWordClick);
     return () => {
       document.removeEventListener('mouseup', handleSelection);
+      document.removeEventListener('touchend', handleSelection);
+      document.removeEventListener('click', handleWordClick);
     };
-  }, [handleSelection]);
+  }, [handleSelection, handleWordClick]);
 
   // Perform translation
   const translateText = async () => {

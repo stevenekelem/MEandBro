@@ -92,7 +92,7 @@ _Hola_
 
 // 1. LLM Chat Tutor Endpoint
 app.post('/api/tutor', async (req, res) => {
-  const { message, history = [], nativeLanguage = 'en', level = 'intermediate' } = req.body;
+  const { message, history = [], nativeLanguage = 'en', level = 'intermediate', concept } = req.body;
   const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
 
   if (!message) {
@@ -125,10 +125,50 @@ app.post('/api/tutor', async (req, res) => {
     }, 800);
   }
 
-  // 1b. Call Gemini API
+  // 1b. Call Gemini API with optional RAG Context
   try {
-    const systemPrompt = getTutorSystemPrompt(nativeLanguage, targetLanguage, level);
-    
+    let systemPrompt = getTutorSystemPrompt(nativeLanguage, targetLanguage, level);
+    let ragContext = '';
+
+    // Search curriculum chunks in database if Supabase is initialized
+    if (supabase) {
+      try {
+        console.log(`[RAG] Generating embedding for message: "${message.substring(0, 30)}..."`);
+        const embedModel = ai.getGenerativeModel({ model: 'gemini-embedding-2' });
+        const embedResult = await embedModel.embedContent({
+          content: { parts: [{ text: message }] },
+          outputDimensionality: 768
+        });
+        const queryEmbedding = embedResult.embedding.values;
+
+        console.log(`[RAG] Searching vector database for matching curriculum chunks...`);
+        const { data: chunks, error: rpcError } = await supabase.rpc('match_curriculum_chunks', {
+          query_embedding: queryEmbedding,
+          match_threshold: 0.3,
+          match_count: 3
+        });
+
+        if (rpcError) {
+          console.warn('[RAG] Supabase RPC failed:', rpcError.message);
+        } else if (chunks && chunks.length > 0) {
+          ragContext = chunks.map(c => `[From Curriculum Textbook: ${c.document_name}]\n${c.content}`).join('\n\n');
+          console.log(`[RAG] Successfully retrieved ${chunks.length} matching textbook chunks.`);
+        } else {
+          console.log('[RAG] No relevant textbook chunks found.');
+        }
+      } catch (ragErr) {
+        console.warn('[RAG] Error performing curriculum search:', ragErr.message);
+      }
+    }
+
+    if (ragContext) {
+      systemPrompt += `\n\nHere is some relevant curriculum context from the student's Spanish/English learning textbooks. Use it to structure your explanations, introduce grammar rules, and reference the text content where appropriate:\n\n${ragContext}`;
+    }
+
+    if (concept) {
+      systemPrompt += `\n\n[Active Lesson Focus]: The student is currently in a structured study session learning about "${concept.title}" (${concept.description}). Provide tailored guidance, explain the grammar rules, and give them targeted practice questions related to this topic.`;
+    }
+
     // Format history for Gemini API.
     const formattedHistory = history.map(item => ({
       role: item.role === 'user' ? 'user' : 'model',
@@ -958,6 +998,307 @@ Only return a valid JSON object. Do not wrap in markdown code blocks.`;
   } catch (error) {
     console.error('[Cron Job] Error executing news sync:', error);
     return res.status(500).json({ error: 'Internal Server Error during news sync', details: error.message });
+  }
+});
+
+// ==========================================
+// --- MOCK LITERATURE DATA & ROUTES ---
+// ==========================================
+
+const MOCK_BOOKS = [
+  {
+    id: 'quijote',
+    title: 'Don Quijote de la Mancha (Capítulo I)',
+    author: 'Miguel de Cervantes',
+    source_lang: 'es',
+    synopsis: 'Un hidalgo de la Mancha pierde la razón de tanto leer novelas de caballerías y decide lanzarse al mundo como caballero andante, buscando honor, batallas y amor cortesano.'
+  },
+  {
+    id: 'principito',
+    title: 'El Principito (Capítulo II)',
+    author: 'Antoine de Saint-Exupéry',
+    source_lang: 'es',
+    synopsis: 'Un piloto varado en el desierto del Sahara entabla amistad con un pequeño y misterioso príncipe que proviene de un asteroide lejano y viaja por el cosmos buscando respuestas.'
+  },
+  {
+    id: 'vida_sueno',
+    title: 'La Vida es Sueño (Jornada I, Escena II)',
+    author: 'Pedro Calderón de la Barca',
+    source_lang: 'es',
+    synopsis: 'Una obra filosófica clásica que gira en torno a Segismundo, príncipe de Polonia, encarcelado en una torre secreta desde su nacimiento por su propio padre debido a una profecía fatal.'
+  },
+  {
+    id: 'hamlet',
+    title: 'Hamlet (Act III, Scene I)',
+    author: 'William Shakespeare',
+    source_lang: 'en',
+    synopsis: 'The ultimate tragedy of Prince Hamlet of Denmark, who is tasked by his father\'s ghost to avenge his murder by killing his uncle Claudius, who has usurped the throne.'
+  },
+  {
+    id: 'pride_prejudice',
+    title: 'Pride and Prejudice (Chapter I)',
+    author: 'Jane Austen',
+    source_lang: 'en',
+    synopsis: 'A classic romantic novel charting the emotional development of Elizabeth Bennet, who learns the difference between superficial goodness and actual integrity.'
+  }
+];
+
+const MOCK_CHAPTERS = {
+  quijote: [
+    {
+      id: 'q1',
+      book_id: 'quijote',
+      chapter_number: 1,
+      title: 'Capítulo I',
+      synopsis: 'Introducción a Alonso Quijano, sus costumbres cotidianas, su dieta y cómo su obsesión con la literatura medieval lo arrastra a convertirse en Don Quijote.',
+      summary_basic: 'Alonso Quijano es un hombre que lee muchos libros de caballeros. [Alonso Quijano is a man who reads many books of knights.] Él decide ser un caballero. [He decides to be a knight.] Busca una armadura y un caballo. [He looks for armor and a horse.]',
+      summary_intermediate: 'Alonso Quijano vive en la Mancha y le apasiona leer novelas de caballerías. Pasa las noches leyendo hasta perder el juicio. Finalmente, decide convertirse en caballero andante para defender el honor y vivir aventuras.',
+      summary_advanced: 'El hidalgo Alonso Quijano, obsesionado con las crónicas de caballería medievales, descuiza su hacienda y enajena su mente por completo. En su delirio heroico, se autoproclama Don Quijote de la Mancha, resucitando la caballería andante.',
+      lines: [
+        { target: 'En un lugar de la Mancha,', native: 'In a place of La Mancha,' },
+        { target: 'de cuyo nombre no quiero acordarme,', native: 'whose name I do not wish to remember,' },
+        { target: 'no ha mucho tiempo que vivía un hidalgo de los de lanza en astillero,', native: 'not long ago there lived a nobleman, one of those with a lance in a rack,' },
+        { target: 'adarga antigua, rocín flaco y galgo corredor.', native: 'an ancient shield, a skinny nag, and a racing greyhound.' }
+      ]
+    }
+  ],
+  principito: [
+    {
+      id: 'p1',
+      book_id: 'principito',
+      chapter_number: 1,
+      title: 'Capítulo II',
+      synopsis: 'El encuentro fortuito del narrador con el principito en el desierto tras el accidente de aviación.',
+      summary_basic: 'El piloto duerme en la arena del desierto. [The pilot sleeps on the desert sand.] Un pequeño niño le despierta. [A little boy wakes him up.] El niño le pide un dibujo de un cordero. [The boy asks him for a drawing of a sheep.]',
+      summary_intermediate: 'El narrador sufre una avería en el desierto del Sahara y se encuentra completamente solo. Al amanecer, se despierta con la presencia misteriosa de un principito que le solicita insistentemente dibujar un cordero.',
+      summary_advanced: 'Tras un aterrizaje forzoso en la inmensidad del Sahara, el piloto se ve confrontado con lo extraordinario: un infante celestial que emerge al romper el día demandando con obstinación la representación gráfica de un ovino.',
+      lines: [
+        { target: 'Viví así, solo, sin nadie con quien hablar verdaderamente,', native: 'I lived like this, alone, with no one to truly talk to,' },
+        { target: 'hasta que tuve una avería en el desierto del Sahara hace seis años.', native: 'until I had a breakdown in the Sahara Desert six years ago.' },
+        { target: 'Algo se había roto en mi motor.', native: 'Something had broken in my engine.' }
+      ]
+    }
+  ],
+  vida_sueno: [
+    {
+      id: 'v1',
+      book_id: 'vida_sueno',
+      chapter_number: 1,
+      title: 'Jornada I, Escena II',
+      synopsis: 'El lamento existencial del príncipe Segismundo encadenado en su torre secreta.',
+      summary_basic: 'Segismundo está encerrado en una torre. [Segismundo is locked in a tower.] Él se pregunta por qué no tiene libertad. [He wonders why he does not have freedom.] Los animales tienen más libertad que él. [Animals have more freedom than him.]',
+      summary_intermediate: 'El príncipe Segismundo reflexiona con profunda amargura sobre su cruel destino y cautiverio. Compara su falta de libertad con las aves, los peces y los ríos, sintiendo una honda injusticia existencial.',
+      summary_advanced: 'Enclaustrado y encadenado en una lúgubre torre, Segismundo declama su desgarrador soliloquio, cuestionando el libre albedrío y lamentando que las criaturas más ínfimas del cosmos gocen de la libertad que a él le es denegada.',
+      lines: [
+        { target: '¡Ay mísero de mí, y ay infelice!', native: 'Ah, wretched me! Oh, unhappy man!' },
+        { target: 'Apurar, cielos, pretendo,', native: 'I try to determine, heavens,' },
+        { target: 'ya que me tratáis así,', native: 'since you treat me so,' },
+        { target: 'qué delito cometí contra vosotros naciendo.', native: 'what crime I committed against you by being born.' }
+      ]
+    }
+  ],
+  hamlet: [
+    {
+      id: 'h1',
+      book_id: 'hamlet',
+      chapter_number: 1,
+      title: 'Act III, Scene I',
+      synopsis: 'Hamlet\'s deep philosophical reflection on existence, suffering, and mortality.',
+      summary_basic: 'Hamlet se pregunta si es mejor vivir o morir. [Hamlet asks himself if it is better to live or to die.] La vida tiene muchos problemas. [Life has many problems.] Él tiene miedo de la muerte. [He is afraid of death.]',
+      summary_intermediate: 'El príncipe Hamlet debate si es más noble tolerar los sufrimientos de la vida o ponerles fin a través de la muerte. Considera que el miedo a lo desconocido después de la muerte nos paraliza de actuar.',
+      summary_advanced: 'Hamlet pronuncia su célebre monólogo existencial sobre el suicidio, el sufrimiento y la parálisis de la voluntad ante el temor de lo desconocido en el más allá, ponderando la inacción contra el enfrentamiento.',
+      lines: [
+        { target: 'To be, or not to be, that is the question:', native: 'Ser o no ser, esa es la cuestión:' },
+        { target: "Whether 'tis nobler in the mind to suffer", native: 'Si es más noble para el espíritu sufrir' },
+        { target: 'The slings and arrows of outrageous fortune,', native: 'Los golpes y dardos de la insultante fortuna,' }
+      ]
+    }
+  ],
+  pride_prejudice: [
+    {
+      id: 'pp1',
+      book_id: 'pride_prejudice',
+      chapter_number: 1,
+      title: 'Chapter I',
+      synopsis: 'The arrival of Mr. Bingley at Netherfield Park and Mrs. Bennet\'s schemes.',
+      summary_basic: 'La señora Bennet quiere casar a sus hijas. [Mrs. Bennet wants to marry her daughters.] Un hombre rico llega al barrio. [A wealthy man arrives in the neighborhood.] Ella le pide a su esposo que lo visite. [She asks her husband to visit him.]',
+      summary_intermediate: 'La señora Bennet está entusiasmada por la llegada de un joven soltero y acaudalado llamado Bingley. Insiste a su esposo, el señor Bennet, para que establezca contacto y así asegurar el futuro de una de sus hijas.',
+      summary_advanced: 'La noticia de que un soltero aristócrata y acaudalado se ha establecido en las inmediaciones altera el ánimo de la señora Bennet, quien apremia con tenacidad a su sarcástico cónyuge para que formalice las visitas sociales de rigor.',
+      lines: [
+        { target: 'It is a truth universally acknowledged,', native: 'Es una verdad mundialmente reconocida,' },
+        { target: 'that a single man in possession of a good fortune,', native: 'que un hombre soltero, dueño de una gran fortuna,' },
+        { target: 'must be in want of a wife.', native: 'necesita una esposa.' }
+      ]
+    }
+  ]
+};
+
+// 1. Fetch all books
+app.get('/api/literature/books', async (req, res) => {
+  if (!supabase) {
+    console.log('[Mock Literature] Returning mock books.');
+    return res.json(MOCK_BOOKS);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('literature_books')
+      .select('*')
+      .order('title', { ascending: true });
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      console.log('[Literature] Supabase books table is empty. Returning mock books.');
+      return res.json(MOCK_BOOKS);
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.warn('[Literature] Failed to fetch books from DB. Using mock fallback:', err.message);
+    res.json(MOCK_BOOKS);
+  }
+});
+
+// 2. Fetch chapters for a book
+app.get('/api/literature/book/:id/chapters', async (req, res) => {
+  const { id } = req.params;
+
+  if (!supabase) {
+    console.log(`[Mock Literature] Returning mock chapters for book: ${id}`);
+    return res.json(MOCK_CHAPTERS[id] || []);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('literature_chapters')
+      .select('*')
+      .eq('book_id', id)
+      .order('chapter_number', { ascending: true });
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      console.log(`[Literature] No chapters in DB for book ${id}. Checking mock chapters.`);
+      return res.json(MOCK_CHAPTERS[id] || []);
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.warn(`[Literature] Failed to fetch chapters for ${id}. Using mock fallback:`, err.message);
+    res.json(MOCK_CHAPTERS[id] || []);
+  }
+});
+
+// 3. Fetch progress for a book
+app.get('/api/literature/progress/:bookId', async (req, res) => {
+  const { bookId } = req.params;
+  const { userId } = req.query;
+
+  if (!supabase || !userId) {
+    console.log(`[Mock Progress] Returning default progress for book: ${bookId}`);
+    return res.json({ completed_chapters: [], current_chapter: 1 });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('user_literature_progress')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data) {
+      // Auto-create default progress record
+      const defaultProgress = {
+        user_id: userId,
+        book_id: bookId,
+        completed_chapters: [],
+        current_chapter: 1
+      };
+
+      const { data: newProgress, error: insertErr } = await supabase
+        .from('user_literature_progress')
+        .insert(defaultProgress)
+        .select('*')
+        .single();
+
+      if (insertErr) {
+        console.warn('[Progress] Failed to insert default progress record:', insertErr.message);
+        return res.json({ completed_chapters: [], current_chapter: 1 });
+      }
+      return res.json(newProgress);
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.warn('[Progress] Error fetching progress, using default:', err.message);
+    res.json({ completed_chapters: [], current_chapter: 1 });
+  }
+});
+
+// 4. Save progress (complete chapter)
+app.post('/api/literature/progress/complete', async (req, res) => {
+  const { userId, bookId, chapterNumber } = req.body;
+
+  if (!supabase || !userId) {
+    console.log(`[Mock Progress Complete] Completed chapter ${chapterNumber} for book: ${bookId}`);
+    return res.json({ completed_chapters: [chapterNumber], current_chapter: chapterNumber + 1 });
+  }
+
+  try {
+    const { data: progress, error: fetchErr } = await supabase
+      .from('user_literature_progress')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+
+    let completed = [];
+    let nextChapter = chapterNumber + 1;
+
+    if (progress) {
+      completed = progress.completed_chapters || [];
+      if (!completed.includes(chapterNumber)) {
+        completed.push(chapterNumber);
+      }
+      nextChapter = Math.max(progress.current_chapter, chapterNumber + 1);
+
+      const { data: updated, error: updateErr } = await supabase
+        .from('user_literature_progress')
+        .update({
+          completed_chapters: completed,
+          current_chapter: nextChapter,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', progress.id)
+        .select('*')
+        .single();
+
+      if (updateErr) throw updateErr;
+      res.json(updated);
+    } else {
+      const { data: created, error: createErr } = await supabase
+        .from('user_literature_progress')
+        .insert({
+          user_id: userId,
+          book_id: bookId,
+          completed_chapters: [chapterNumber],
+          current_chapter: nextChapter
+        })
+        .select('*')
+        .single();
+
+      if (createErr) throw createErr;
+      res.json(created);
+    }
+  } catch (err) {
+    console.error('[Progress Complete] Error updating progression:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
+
 // Speech Synthesis Utilities for Spanglish
 
 /**
@@ -58,88 +61,134 @@ const isVoiceLanguageMatch = (voice: SpeechSynthesisVoice, lang: 'es' | 'en'): b
  * Pronounces text using the best available native voice for the target language.
  * Dynamically switches accents sentence-by-sentence for mixed bilingual responses.
  */
-export const speakTextWithBestVoice = (
+export const speakTextWithBestVoice = async (
   text: string, 
   defaultTargetLanguage: 'en' | 'es', 
   speechRate: number
 ) => {
-  try {
-    // 1. Cancel any active speech
-    window.speechSynthesis.cancel();
-    
-    // 2. Clean the input text of markdown and bracket translations
-    const cleanedText = cleanTextForTTS(text);
-    if (!cleanedText) return;
-
-    // 3. Split the text into sentences (preserving punctuation)
-    const rawSentences = cleanedText.split(/([.!?\n]+)/);
-    
-    // Reconstruct sentences with their delimiters
-    const segments: string[] = [];
-    for (let i = 0; i < rawSentences.length; i += 2) {
-      const sentence = rawSentences[i];
-      const delimiter = rawSentences[i + 1] || '';
-      const fullSentence = (sentence + delimiter).trim();
-      if (fullSentence) {
-        segments.push(fullSentence);
-      }
-    }
-
-    const voices = window.speechSynthesis.getVoices();
-    console.log(`TTS: Found ${voices.length} voices in browser. Selecting best matches...`);
-
-    // 4. Queue each sentence with its detected accent voice
-    segments.forEach(segment => {
-      // Skip empty or formatting remnants
-      if (segment.replace(/[.!?\s-]/g, '').length === 0) return;
-
-      // Detect language: Spanish or English
-      const isSpanish = isSegmentSpanish(segment);
-      const isNeutral = !/[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/.test(segment);
-      const segmentLang: 'en' | 'es' = isNeutral ? defaultTargetLanguage : (isSpanish ? 'es' : 'en');
-
-      const utterance = new SpeechSynthesisUtterance(segment);
-
-      // Find best voice for this sentence's language
-      let bestVoice: SpeechSynthesisVoice | null = null;
+  if (Capacitor.isNativePlatform()) {
+    try {
+      // 1. Cancel any active native speech
+      await TextToSpeech.stop();
       
-      // A. Google voice matching the language
-      bestVoice = voices.find(v => 
-        isVoiceLanguageMatch(v, segmentLang) && 
-        v.name.toLowerCase().includes('google')
-      ) || null;
+      // 2. Clean the input text of markdown and bracket translations
+      const cleanedText = cleanTextForTTS(text);
+      if (!cleanedText) return;
 
-      // B. Microsoft Natural / Neural voice matching the language
-      if (!bestVoice) {
+      // 3. Split the text into sentences (preserving punctuation)
+      const rawSentences = cleanedText.split(/([.!?\n]+)/);
+      const segments: string[] = [];
+      for (let i = 0; i < rawSentences.length; i += 2) {
+        const sentence = rawSentences[i];
+        const delimiter = rawSentences[i + 1] || '';
+        const fullSentence = (sentence + delimiter).trim();
+        if (fullSentence) {
+          segments.push(fullSentence);
+        }
+      }
+
+      // 4. Speak each segment in sequence using await to avoid overlapping audio
+      for (const segment of segments) {
+        if (segment.replace(/[.!?\s-]/g, '').length === 0) continue;
+
+        const isSpanish = isSegmentSpanish(segment);
+        const isNeutral = !/[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/.test(segment);
+        const segmentLang = isNeutral ? defaultTargetLanguage : (isSpanish ? 'es' : 'en');
+        const langCode = segmentLang === 'es' ? 'es-MX' : 'en-US';
+
+        console.log(`TTS Native: speaking "${segment}" in language "${langCode}" at rate ${speechRate}`);
+        await TextToSpeech.speak({
+          text: segment,
+          lang: langCode,
+          rate: speechRate,
+          pitch: 1.0,
+          volume: 1.0,
+          category: 'playback'
+        });
+      }
+    } catch (error) {
+      console.error('Native speech synthesis execution failed:', error);
+    }
+  } else {
+    // Web Speech API fallback
+    try {
+      // 1. Cancel any active speech
+      window.speechSynthesis.cancel();
+      
+      // 2. Clean the input text of markdown and bracket translations
+      const cleanedText = cleanTextForTTS(text);
+      if (!cleanedText) return;
+
+      // 3. Split the text into sentences (preserving punctuation)
+      const rawSentences = cleanedText.split(/([.!?\n]+)/);
+      
+      // Reconstruct sentences with their delimiters
+      const segments: string[] = [];
+      for (let i = 0; i < rawSentences.length; i += 2) {
+        const sentence = rawSentences[i];
+        const delimiter = rawSentences[i + 1] || '';
+        const fullSentence = (sentence + delimiter).trim();
+        if (fullSentence) {
+          segments.push(fullSentence);
+        }
+      }
+
+      const voices = window.speechSynthesis.getVoices();
+      console.log(`TTS: Found ${voices.length} voices in browser. Selecting best matches...`);
+
+      // 4. Queue each sentence with its detected accent voice
+      segments.forEach(segment => {
+        // Skip empty or formatting remnants
+        if (segment.replace(/[.!?\s-]/g, '').length === 0) return;
+
+        // Detect language: Spanish or English
+        const isSpanish = isSegmentSpanish(segment);
+        const isNeutral = !/[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/.test(segment);
+        const segmentLang: 'en' | 'es' = isNeutral ? defaultTargetLanguage : (isSpanish ? 'es' : 'en');
+
+        const utterance = new SpeechSynthesisUtterance(segment);
+
+        // Find best voice for this sentence's language
+        let bestVoice: SpeechSynthesisVoice | null = null;
+        
+        // A. Google voice matching the language
         bestVoice = voices.find(v => 
           isVoiceLanguageMatch(v, segmentLang) && 
-          (v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('neural'))
+          v.name.toLowerCase().includes('google')
         ) || null;
-      }
 
-      // C. Fallback matching language using isVoiceLanguageMatch
-      if (!bestVoice) {
-        bestVoice = voices.find(v => isVoiceLanguageMatch(v, segmentLang)) || null;
-      }
+        // B. Microsoft Natural / Neural voice matching the language
+        if (!bestVoice) {
+          bestVoice = voices.find(v => 
+            isVoiceLanguageMatch(v, segmentLang) && 
+            (v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('neural'))
+          ) || null;
+        }
 
-      // Apply settings to utterance
-      if (bestVoice) {
-        utterance.voice = bestVoice;
-        utterance.lang = bestVoice.lang;
-        console.log(`TTS Segment: "${segment}" -> Selected Voice: "${bestVoice.name}" (${bestVoice.lang})`);
-      } else {
-        utterance.lang = segmentLang === 'es' ? 'es-MX' : 'en-US';
-        console.warn(`TTS Segment: "${segment}" -> No matching voice found. Using default browser fallback for: ${utterance.lang}`);
-      }
+        // C. Fallback matching language using isVoiceLanguageMatch
+        if (!bestVoice) {
+          bestVoice = voices.find(v => isVoiceLanguageMatch(v, segmentLang)) || null;
+        }
 
-      utterance.rate = speechRate;
-      
-      // Queue the speech
-      window.speechSynthesis.speak(utterance);
-    });
+        // Apply settings to utterance
+        if (bestVoice) {
+          utterance.voice = bestVoice;
+          utterance.lang = bestVoice.lang;
+          console.log(`TTS Segment: "${segment}" -> Selected Voice: "${bestVoice.name}" (${bestVoice.lang})`);
+        } else {
+          utterance.lang = segmentLang === 'es' ? 'es-MX' : 'en-US';
+          console.warn(`TTS Segment: "${segment}" -> No matching voice found. Using default browser fallback for: ${utterance.lang}`);
+        }
 
-  } catch (error) {
-    console.error('Bilingual Speech synthesis execution failed:', error);
+        utterance.rate = speechRate;
+        
+        // Queue the speech
+        window.speechSynthesis.speak(utterance);
+      });
+
+    } catch (error) {
+      console.error('Bilingual Speech synthesis execution failed:', error);
+    }
   }
 };
 

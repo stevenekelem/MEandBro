@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
 import { Capacitor } from '@capacitor/core';
-import { Send, Mic, MicOff, Volume2, Sparkles, Languages, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Send, Mic, MicOff, Volume2, Sparkles, Languages, CheckCircle2, AlertCircle, BookOpen } from 'lucide-react';
 import { getApiUrl } from '../utils/api';
 
 // Selected practice phrases based on target language
@@ -21,6 +21,50 @@ const PRACTICE_PHRASES = {
   ]
 };
 
+interface Concept {
+  id: string;
+  title: string;
+  description: string;
+  level: 'basic' | 'intermediate' | 'advanced';
+}
+
+const STUDY_CONCEPTS: Record<'es' | 'en', Concept[]> = {
+  es: [
+    { id: 'es-basic-greetings', title: 'Greetings & Introductions', description: 'Learn standard ways to say hello, ask names, and make simple introductions.', level: 'basic' },
+    { id: 'es-basic-pronouns', title: 'Subject Pronouns', description: 'Master pronouns (yo, tú, él, ella, nosotros, ellos) and subject agreement.', level: 'basic' },
+    { id: 'es-basic-gender', title: 'Gender & Number of Nouns', description: 'Understand how masculine and feminine nouns work with singular/plural articles.', level: 'basic' },
+    { id: 'es-basic-present', title: 'Present Tense Regular Verbs', description: 'Conjugate verbs ending in -ar, -er, and -ir in the present tense.', level: 'basic' },
+    { id: 'es-basic-ser-estar', title: 'Ser vs Estar', description: 'Learn the difference between permanent traits (Ser) and temporary states (Estar).', level: 'basic' },
+    { id: 'es-inter-preterite', title: 'The Preterite Past Tense', description: 'Talk about specific, completed actions in the past (e.g., "Ayer comí pizza").', level: 'intermediate' },
+    { id: 'es-inter-imperfect', title: 'The Imperfect Past Tense', description: 'Describe past environments, age, time, and habitual actions in the past.', level: 'intermediate' },
+    { id: 'es-inter-reflexive', title: 'Reflexive Verbs & Routines', description: 'Master actions done to oneself (e.g., levantarse, lavarse) and daily routines.', level: 'intermediate' },
+    { id: 'es-inter-objects', title: 'Direct & Indirect Objects', description: 'Learn to use direct (lo, la) and indirect (me, te, le) pronouns correctly.', level: 'intermediate' },
+    { id: 'es-inter-por-para', title: 'Por vs Para', description: 'Understand when to use these two prepositions for "for", destination, and cause.', level: 'intermediate' },
+    { id: 'es-adv-pres-subj', title: 'Present Subjunctive', description: 'Express desires, doubts, emotions, recommendations, and hopes.', level: 'advanced' },
+    { id: 'es-adv-past-subj', title: 'Past Subjunctive', description: 'Discuss hypothetical situations, imaginary conditions, and polite requests.', level: 'advanced' },
+    { id: 'es-adv-imperative', title: 'The Imperative Mood (Commands)', description: 'Formulate formal and informal commands (commands, prohibitions, requests).', level: 'advanced' },
+    { id: 'es-adv-impersonal-se', title: 'Impersonal & Passive Se', description: 'Express generic or passive statements where the subject is omitted.', level: 'advanced' },
+    { id: 'es-adv-idioms', title: 'Advanced Spanish Idioms', description: 'Learn natural native phrases like "echar de menos", "dar gato por liebre", etc.', level: 'advanced' }
+  ],
+  en: [
+    { id: 'en-basic-greetings', title: 'Greetings & Personal Info', description: 'Learn standard greetings, introducing yourself, and spelling basic info.', level: 'basic' },
+    { id: 'en-basic-pronouns', title: 'Pronouns & Possessives', description: 'Master subject pronouns, object pronouns, and possessive adjectives (my, your).', level: 'basic' },
+    { id: 'en-basic-tobe', title: 'The Verb "To Be"', description: 'Understand present conjugations (am, is, are) and questions/negations.', level: 'basic' },
+    { id: 'en-basic-present', title: 'Present Simple Tense', description: 'Conjugate regular verbs to talk about daily routines, habits, and truths.', level: 'basic' },
+    { id: 'en-basic-plurals', title: 'Plurals & Demonstratives', description: 'Form plural nouns and use demonstrative words (this, that, these, those).', level: 'basic' },
+    { id: 'en-inter-continuous', title: 'Present Continuous Tense', description: 'Talk about actions currently in progress or planned future arrangements.', level: 'intermediate' },
+    { id: 'en-inter-past', title: 'Past Simple Tense', description: 'Master regular and irregular verbs to recount specific past actions and events.', level: 'intermediate' },
+    { id: 'en-inter-perfect', title: 'Present Perfect Simple', description: 'Talk about life experiences, unfinished actions, and connections to the present.', level: 'intermediate' },
+    { id: 'en-inter-modals', title: 'Modal Verbs of Obligation & Ability', description: 'Use can, could, should, must, and have to for advice and obligation.', level: 'intermediate' },
+    { id: 'en-inter-comparatives', title: 'Comparatives & Superlatives', description: 'Compare items using "-er", "more", "-est", and "most" structures.', level: 'intermediate' },
+    { id: 'en-adv-past-perfect', title: 'Past Perfect Simple & Continuous', description: 'Describe actions that occurred before another point in the past.', level: 'advanced' },
+    { id: 'en-adv-passive', title: 'The Passive Voice', description: 'Change focus from the actor to the action (e.g., "The report was written").', level: 'advanced' },
+    { id: 'en-adv-conditionals', title: 'Conditionals (Third & Mixed)', description: 'Express imaginary past actions, regrets, and hypothetical results.', level: 'advanced' },
+    { id: 'en-adv-reported', title: 'Reported & Indirect Speech', description: 'Relate what other people said using backshifted tenses and verb patterns.', level: 'advanced' },
+    { id: 'en-adv-phrasals', title: 'Phrasal Verbs & Idioms', description: 'Master two-word verbs (look up, get along) and common idioms.', level: 'advanced' }
+  ]
+};
+
 export const ChatModule: React.FC = () => {
   const { 
     nativeLanguage, 
@@ -34,7 +78,20 @@ export const ChatModule: React.FC = () => {
     savedVocabulary
   } = useApp();
 
-  const [activeSubMode, setActiveSubMode] = useState<'chat' | 'pronounce'>('chat');
+  const [activeSubMode, setActiveSubMode] = useState<'chat' | 'pronounce' | 'study'>('study');
+  const [activeConcept, setActiveConcept] = useState<Concept | null>(null);
+  const [studyProgress, setStudyProgress] = useState<Record<string, 'not_started' | 'studying' | 'mastered'>>(() => {
+    const data = localStorage.getItem('spanglish_study_progress');
+    return data ? JSON.parse(data) : {};
+  });
+
+  const updateStudyStatus = (conceptId: string, status: 'not_started' | 'studying' | 'mastered') => {
+    setStudyProgress(prev => {
+      const updated = { ...prev, [conceptId]: status };
+      localStorage.setItem('spanglish_study_progress', JSON.stringify(updated));
+      return updated;
+    });
+  };
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
@@ -173,6 +230,43 @@ export const ChatModule: React.FC = () => {
     }
   };
 
+  const startStudySession = async (concept: Concept) => {
+    setActiveConcept(concept);
+    updateStudyStatus(concept.id, 'studying');
+    clearChatHistory();
+    setActiveSubMode('chat');
+    setLoading(true);
+
+    const initialSystemMessage = `[SYSTEM_LESSON_START] The student wants to start a structured study session learning about "${concept.title}". Description: "${concept.description}". Please introduce this concept in detail. Use any textbook chunks if available, explain the rules clearly, and ask the student 1 practice question to test their understanding.`;
+
+    const userFriendlyText = `Hi! I would like to start a structured lesson on "${concept.title}".`;
+    addChatMessage('user', userFriendlyText);
+
+    try {
+      const response = await fetch(getApiUrl('/api/tutor'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: initialSystemMessage,
+          history: [],
+          nativeLanguage,
+          level,
+          concept
+        })
+      });
+      const data = await response.json();
+      if (data.text) {
+        addChatMessage('model', data.text);
+        speakText(data.text);
+      }
+    } catch (error) {
+      console.error('Study guide proxy error:', error);
+      addChatMessage('model', "Sorry, I had some trouble starting the study session. Please try again!");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 1. Send free-form chat message to tutor
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -191,7 +285,8 @@ export const ChatModule: React.FC = () => {
           message: userMsg,
           history: chatHistory,
           nativeLanguage,
-          level
+          level,
+          concept: activeConcept
         })
       });
       const data = await response.json();
@@ -391,6 +486,28 @@ export const ChatModule: React.FC = () => {
       {/* Sub Mode Header */}
       <div style={{ display: 'flex', background: 'var(--surface)', padding: '4px', borderRadius: '12px', marginBottom: '12px', border: '1px solid var(--border)' }}>
         <button
+          onClick={() => setActiveSubMode('study')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            background: activeSubMode === 'study' ? 'var(--primary-gradient)' : 'transparent',
+            border: 'none',
+            color: 'white',
+            fontWeight: '600',
+            fontSize: '12px',
+            padding: '8px 4px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <BookOpen size={13} />
+          <span>{nativeLanguage === 'es' ? 'Estudio' : 'Study Guide'}</span>
+        </button>
+        <button
           onClick={() => setActiveSubMode('chat')}
           style={{
             flex: 1,
@@ -402,15 +519,15 @@ export const ChatModule: React.FC = () => {
             border: 'none',
             color: 'white',
             fontWeight: '600',
-            fontSize: '13px',
-            padding: '8px',
+            fontSize: '12px',
+            padding: '8px 4px',
             borderRadius: '8px',
             cursor: 'pointer',
             transition: 'all 0.2s ease'
           }}
         >
-          <Sparkles size={14} />
-          <span>{nativeLanguage === 'es' ? 'Conversación' : 'Tutor Chat'}</span>
+          <Sparkles size={13} />
+          <span>{nativeLanguage === 'es' ? 'Tutor' : 'Tutor Chat'}</span>
         </button>
         <button
           onClick={() => setActiveSubMode('pronounce')}
@@ -424,23 +541,83 @@ export const ChatModule: React.FC = () => {
             border: 'none',
             color: 'white',
             fontWeight: '600',
-            fontSize: '13px',
-            padding: '8px',
+            fontSize: '12px',
+            padding: '8px 4px',
             borderRadius: '8px',
             cursor: 'pointer',
             transition: 'all 0.2s ease'
           }}
         >
-          <Languages size={14} />
+          <Languages size={13} />
           <span>{nativeLanguage === 'es' ? 'Pronunciación' : 'Speech Coach'}</span>
         </button>
       </div>
 
       {/* Screen Mode Contents */}
-      {activeSubMode === 'chat' ? (
+      {activeSubMode === 'chat' && (
         // 1. FREE TUTOR CHAT
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           
+          {/* Active study session banner */}
+          {activeConcept && (
+            <div style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--border-glow)',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              marginBottom: '10px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              animation: 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                <BookOpen size={16} color="var(--primary)" style={{ flexShrink: 0 }} />
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '9px', color: 'var(--primary)', fontWeight: '800', textTransform: 'uppercase' }}>Active Lesson Focus</div>
+                  <h5 style={{ fontSize: '12.5px', fontWeight: '700', color: 'var(--text-primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeConcept.title}</h5>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                <button
+                  onClick={() => {
+                    updateStudyStatus(activeConcept.id, 'mastered');
+                    setActiveConcept(null);
+                  }}
+                  style={{
+                    background: 'rgb(16, 185, 129)',
+                    border: 'none',
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Mastered ✅
+                </button>
+                <button
+                  onClick={() => setActiveConcept(null)}
+                  style={{
+                    background: 'var(--bg-app)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-primary)',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Exit
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Messages list */}
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px', marginBottom: '12px' }}>
             {chatHistory.length === 0 ? (
@@ -602,7 +779,9 @@ export const ChatModule: React.FC = () => {
           </form>
 
         </div>
-      ) : (
+      )}
+
+      {activeSubMode === 'pronounce' && (
         // 2. PRONUNCIATION COACH
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
           
@@ -872,6 +1051,138 @@ export const ChatModule: React.FC = () => {
             </div>
           )}
 
+        </div>
+      )}
+
+      {activeSubMode === 'study' && (
+        // 3. STUDY GUIDE MODE
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+          <div>
+            <h3 style={{ fontSize: '16px', fontWeight: '800' }}>
+              {nativeLanguage === 'es' ? 'Plan de Estudios' : 'Curriculum Study Guide'}
+            </h3>
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              {nativeLanguage === 'es' 
+                ? 'Completa lecciones estructuradas respaldadas por tu material de estudio.' 
+                : 'Complete structured grammar and vocabulary lessons backed by your textbooks.'}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {STUDY_CONCEPTS[targetLanguage]?.filter(c => c.level === level).map((concept) => {
+              const status = studyProgress[concept.id] || 'not_started';
+              const isCurrent = activeConcept?.id === concept.id;
+
+              return (
+                <div 
+                  key={concept.id}
+                  className="glass-card"
+                  style={{
+                    padding: '14px',
+                    border: isCurrent ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                    background: isCurrent ? 'rgba(139, 92, 246, 0.03)' : 'var(--surface)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <BookOpen size={16} color="var(--primary)" />
+                      <h4 style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                        {concept.title}
+                      </h4>
+                    </div>
+                    
+                    {/* Status Badge */}
+                    <span style={{
+                      fontSize: '9px',
+                      fontWeight: '800',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      textTransform: 'uppercase',
+                      background: status === 'mastered' 
+                        ? 'rgba(16, 185, 129, 0.15)' 
+                        : status === 'studying' 
+                          ? 'rgba(245, 158, 11, 0.15)' 
+                          : 'rgba(255,255,255,0.05)',
+                      color: status === 'mastered' 
+                        ? 'rgb(16, 185, 129)' 
+                        : status === 'studying' 
+                          ? 'rgb(245, 158, 11)' 
+                          : 'var(--text-muted)'
+                    }}>
+                      {status === 'mastered' ? 'Mastered' : status === 'studying' ? 'Studying' : 'Not Started'}
+                    </span>
+                  </div>
+
+                  <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    {concept.description}
+                  </p>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                    {/* Mastery Action */}
+                    {status === 'studying' ? (
+                      <button
+                        onClick={() => updateStudyStatus(concept.id, 'mastered')}
+                        style={{
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          border: '1px solid rgba(16, 185, 129, 0.2)',
+                          color: 'rgb(16, 185, 129)',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Mark as Mastered
+                      </button>
+                    ) : status === 'mastered' ? (
+                      <button
+                        onClick={() => updateStudyStatus(concept.id, 'studying')}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          padding: '0',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Review Concept
+                      </button>
+                    ) : (
+                      <div />
+                    )}
+
+                    <button
+                      onClick={() => startStudySession(concept)}
+                      style={{
+                        background: 'var(--primary-gradient)',
+                        border: 'none',
+                        color: 'white',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <Sparkles size={11} />
+                      <span>{status === 'studying' ? 'Continue Lesson' : 'Study with Tutor'}</span>
+                    </button>
+                  </div>
+
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

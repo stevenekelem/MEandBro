@@ -1,448 +1,842 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
-import { Book, Volume2, HelpCircle, FileText, Info } from 'lucide-react';
+import { Book, Volume2, HelpCircle, FileText, Info, Lock, CheckCircle, PlayCircle, Trophy, Sparkles, ChevronRight, ArrowLeft } from 'lucide-react';
+import { getApiUrl } from '../utils/api';
 
-interface LitExcerpt {
+interface BookType {
   id: string;
   title: string;
   author: string;
-  sourceLang: 'es' | 'en';
-  synopsis: string;       // Storyline overview
-  chapterSummary: string; // Chapter introduction summary
+  source_lang: 'es' | 'en';
+  synopsis: string;
+}
+
+interface ChapterType {
+  id: string;
+  book_id: string;
+  chapter_number: number;
+  title: string;
+  synopsis: string;
+  summary_basic: string;
+  summary_intermediate: string;
+  summary_advanced: string;
   lines: Array<{
     target: string;
     native: string;
   }>;
 }
 
-const LITERATURE_DATA: LitExcerpt[] = [
+interface ProgressType {
+  completed_chapters: number[];
+  current_chapter: number;
+}
+
+// Local fallback data if API requests fail
+const LOCAL_FALLBACK_BOOKS: BookType[] = [
   {
     id: 'quijote',
     title: 'Don Quijote de la Mancha (Capítulo I)',
     author: 'Miguel de Cervantes',
-    sourceLang: 'es',
-    synopsis: 'Un hidalgo de la Mancha pierde la razón de tanto leer novelas de caballerías y decide lanzarse al mundo como caballero andante, buscando honor, batallas y amor cortesano.',
-    chapterSummary: 'Introducción a Alonso Quijano, sus costumbres cotidianas, su dieta y cómo su obsesión con la literatura medieval lo arrastra a convertirse en Don Quijote.',
-    lines: [
-      { target: 'En un lugar de la Mancha,', native: 'In a place of La Mancha,' },
-      { target: 'de cuyo nombre no quiero acordarme,', native: 'whose name I do not wish to remember,' },
-      { target: 'no ha mucho tiempo que vivía un hidalgo de los de lanza en astillero,', native: 'not long ago there lived a nobleman, one of those with a lance in a rack,' },
-      { target: 'adarga antigua, rocín flaco y galgo corredor.', native: 'an ancient shield, a skinny nag, and a racing greyhound.' },
-      { target: 'Una olla de algo más vaca que carnero, salpicón las más noches,', native: 'A pot of stew, containing a bit more beef than mutton, hash most nights,' },
-      { target: 'duelos y quebrantos los sábados, lantejas los viernes,', native: 'scraps and eggs on Saturdays, lentils on Fridays,' },
-      { target: 'algún palomino de añadidura los domingos,', native: 'and some pigeon as an addition on Sundays,' },
-      { target: 'consumían las tres partes de su hacienda.', native: 'consumed three-quarters of his income.' }
-    ]
+    source_lang: 'es',
+    synopsis: 'Un hidalgo de la Mancha pierde la razón de tanto leer novelas de caballerías y decide lanzarse al mundo como caballero andante, buscando honor, batallas y amor cortesano.'
   },
   {
     id: 'principito',
     title: 'El Principito (Capítulo II)',
     author: 'Antoine de Saint-Exupéry',
-    sourceLang: 'es',
-    synopsis: 'Un piloto varado en el desierto del Sahara entabla amistad con un pequeño y misterioso príncipe que proviene de un asteroide lejano y viaja por el cosmos buscando respuestas.',
-    chapterSummary: 'Tras sufrir una avería en su avión, el narrador despierta en el desierto al amanecer con una extraña vocecita que le pide un dibujo peculiar: un cordero.',
-    lines: [
-      { target: 'Viví así, solo, sin nadie con quien hablar verdaderamente,', native: 'I lived like this, alone, with no one to truly talk to,' },
-      { target: 'hasta que tuve una avería en el desierto del Sahara hace seis años.', native: 'until I had a breakdown in the Sahara Desert six years ago.' },
-      { target: 'Algo se había roto en mi motor.', native: 'Something had broken in my engine.' },
-      { target: 'La primera noche me dormí sobre la arena,', native: 'The first night I fell asleep on the sand,' },
-      { target: 'a mil millas de toda tierra habitada.', native: 'a thousand miles from any inhabited land.' },
-      { target: 'Se imaginarán mi sorpresa cuando,', native: 'You can imagine my surprise when,' },
-      { target: 'al romper el día, me despertó una extraña vocecita que decía:', native: 'at break of day, I was awakened by an odd little voice saying:' },
-      { target: '—Por favor... ¡dibújame un cordero!', native: '—Please... draw me a sheep!' }
-    ]
+    source_lang: 'es',
+    synopsis: 'Un piloto varado en el desierto del Sahara entabla amistad con un pequeño y misterioso príncipe que proviene de un asteroide lejano y viaja por el cosmos buscando respuestas.'
   },
   {
     id: 'vida_sueno',
     title: 'La Vida es Sueño (Jornada I, Escena II)',
     author: 'Pedro Calderón de la Barca',
-    sourceLang: 'es',
-    synopsis: 'Una obra filosófica clásica que gira en torno a Segismundo, príncipe de Polonia, encarcelado en una torre secreta desde su nacimiento por su propio padre debido a una profecía fatal.',
-    chapterSummary: 'Segismundo pronuncia su célebre monólogo lamentando su cautiverio y expresando celos de la libertad que disfrutan las aves, los peces y los ríos de la naturaleza.',
-    lines: [
-      { target: '¡Ay mísero de mí, y ay infelice!', native: 'Ah, wretched me! Oh, unhappy man!' },
-      { target: 'Apurar, cielos, pretendo,', native: 'I try to determine, heavens,' },
-      { target: 'ya que me tratáis así,', native: 'since you treat me so,' },
-      { target: 'qué delito cometí contra vosotros naciendo.', native: 'what crime I committed against you by being born.' },
-      { target: 'Nace el ave, y con las galas que le dan belleza suma,', native: 'The bird is born, and with the finery that gives it ultimate beauty,' },
-      { target: 'apenas es flor de pluma cuando las etéreas salas corta con velocidad.', native: 'it is barely a flower of feathers when it swiftly cuts the ethereal halls.' },
-      { target: '¿Y yo tengo menos libertad?', native: 'And do I have less freedom?' }
-    ]
+    source_lang: 'es',
+    synopsis: 'Una obra filosófica clásica que gira en torno a Segismundo, príncipe de Polonia, encarcelado en una torre secreta desde su nacimiento por su propio padre debido a una profecía fatal.'
   },
   {
     id: 'hamlet',
     title: 'Hamlet (Act III, Scene I)',
     author: 'William Shakespeare',
-    sourceLang: 'en',
-    synopsis: 'The ultimate tragedy of Prince Hamlet of Denmark, who is tasked by his father\'s ghost to avenge his murder by killing his uncle Claudius, who has usurped the throne.',
-    chapterSummary: 'Hamlet delivers his iconic soliloquy reflecting on the pain of existence, the dread of the afterlife, and the choice between suicide and action.',
-    lines: [
-      { target: 'To be, or not to be, that is the question:', native: 'Ser o no ser, esa es la cuestión:' },
-      { target: "Whether 'tis nobler in the mind to suffer", native: 'Si es más noble para el espíritu sufrir' },
-      { target: 'The slings and arrows of outrageous fortune,', native: 'Los golpes y dardos de la insultante fortuna,' },
-      { target: 'Or to take arms against a sea of troubles', native: 'O tomar las armas contra un mar de tribulaciones' },
-      { target: 'And by opposing end them. To die—to sleep,', native: 'Y oponiéndose a ellas, darles fin. Morir, dormir,' },
-      { target: 'No more; and by a sleep to say we end', native: 'no más; y con un sueño decir que acabamos' },
-      { target: 'The heart-ache and the thousand natural shocks', native: 'el dolor del corazón y los mil conflictos naturales' },
-      { target: 'That flesh is heir to: \'tis a consummation', native: 'que heredó la carne; es una consumación' },
-      { target: 'Devoutly to be wish\'d. To die, to sleep;', native: 'devotamente deseable. Morir, dormir;' },
-      { target: 'To sleep, chance to dream—ay, there\'s the rub:', native: 'dormir, tal vez soñar; sí, ahí está la dificultad:' }
-    ]
+    source_lang: 'en',
+    synopsis: 'The ultimate tragedy of Prince Hamlet of Denmark, who is tasked by his father\'s ghost to avenge his murder by killing his uncle Claudius, who has usurped the throne.'
   },
   {
     id: 'pride_prejudice',
     title: 'Pride and Prejudice (Chapter I)',
     author: 'Jane Austen',
-    sourceLang: 'en',
-    synopsis: 'A classic romantic novel charting the emotional development of Elizabeth Bennet, who learns the difference between superficial goodness and actual integrity.',
-    chapterSummary: 'Mrs. Bennet urges her husband to visit Mr. Bingley, a wealthy young bachelor who has just leased the nearby estate of Netherfield Park, hoping to marry off one of her daughters.',
-    lines: [
-      { target: 'It is a truth universally acknowledged,', native: 'Es una verdad mundialmente reconocida,' },
-      { target: 'that a single man in possession of a good fortune,', native: 'que un hombre soltero, dueño de una gran fortuna,' },
-      { target: 'must be in want of a wife.', native: 'necesita una esposa.' },
-      { target: 'However little known the feelings of such a man may be', native: 'Por poco conocidos que sean los sentimientos de tal hombre' },
-      { target: 'on his first entering a neighbourhood,', native: 'al entrar por primera vez en un vecindario,' },
-      { target: 'this truth is so well fixed in the minds of the surrounding families,', native: 'esta verdad está tan asentada en las mentes de las familias vecinas,' },
-      { target: 'that he is considered as the rightful property of some one or other of their daughters.', native: 'que lo consideran propiedad legítima de alguna de sus hijas.' }
-    ]
+    source_lang: 'en',
+    synopsis: 'A classic romantic novel charting the emotional development of Elizabeth Bennet, who learns the difference between superficial goodness and actual integrity.'
   }
 ];
 
+const LOCAL_FALLBACK_CHAPTERS: Record<string, ChapterType[]> = {
+  quijote: [
+    {
+      id: 'q1',
+      book_id: 'quijote',
+      chapter_number: 1,
+      title: 'Capítulo I',
+      synopsis: 'Introducción a Alonso Quijano, sus costumbres cotidianas, su dieta y cómo su obsesión con la literatura medieval lo arrastra a convertirse en Don Quijote.',
+      summary_basic: 'Alonso Quijano es un hombre que lee muchos libros de caballeros. [Alonso Quijano is a man who reads many books of knights.] Él decide ser un caballero. [He decides to be a knight.] Busca una armadura y un caballo. [He looks for armor and a horse.]',
+      summary_intermediate: 'Alonso Quijano vive en la Mancha y le apasiona leer novelas de caballerías. Pasa las noches leyendo hasta perder el juicio. Finalmente, decide convertirse en caballero andante para defender el honor y vivir aventuras.',
+      summary_advanced: 'El hidalgo Alonso Quijano, obsesionado con las crónicas de caballería medievales, descuiza su hacienda y enajena su mente por completo. En su delirio heroico, se autoproclama Don Quijote de la Mancha, resucitando la caballería andante.',
+      lines: [
+        { target: 'En un lugar de la Mancha,', native: 'In a place of La Mancha,' },
+        { target: 'de cuyo nombre no quiero acordarme,', native: 'whose name I do not wish to remember,' },
+        { target: 'no ha mucho tiempo que vivía un hidalgo de los de lanza en astillero,', native: 'not long ago there lived a nobleman, one of those with a lance in a rack,' },
+        { target: 'adarga antigua, rocín flaco y galgo corredor.', native: 'an ancient shield, a skinny nag, and a racing greyhound.' }
+      ]
+    }
+  ],
+  principito: [
+    {
+      id: 'p1',
+      book_id: 'principito',
+      chapter_number: 1,
+      title: 'Capítulo II',
+      synopsis: 'El encuentro fortuito del narrador con el principito en el desierto tras el accidente de aviación.',
+      summary_basic: 'El piloto duerme en la arena del desierto. [The pilot sleeps on the desert sand.] Un pequeño niño le despierta. [A little boy wakes him up.] El niño le pide un dibujo de un cordero. [The boy asks him for a drawing of a sheep.]',
+      summary_intermediate: 'El narrador sufre una avería en el desierto del Sahara y se encuentra completamente solo. Al amanecer, se despierta con la presencia misteriosa de un principito que le solicita insistentemente dibujar un cordero.',
+      summary_advanced: 'Tras un aterrizaje forzoso en la inmensidad del Sahara, el piloto se ve confrontado con lo extraordinario: un infante celestial que emerge al romper el día demandando con obstinación la representación gráfica de un ovino.',
+      lines: [
+        { target: 'Viví así, solo, sin nadie con quien hablar verdaderamente,', native: 'I lived like this, alone, with no one to truly talk to,' },
+        { target: 'hasta que tuve una avería en el desierto del Sahara hace seis años.', native: 'until I had a breakdown in the Sahara Desert six years ago.' },
+        { target: 'Algo se había roto en mi motor.', native: 'Something had broken in my engine.' }
+      ]
+    }
+  ],
+  vida_sueno: [
+    {
+      id: 'v1',
+      book_id: 'vida_sueno',
+      chapter_number: 1,
+      title: 'Jornada I, Escena II',
+      synopsis: 'El lamento existencial del príncipe Segismundo encadenado en su torre secreta.',
+      summary_basic: 'Segismundo está encerrado en una torre. [Segismundo is locked in a tower.] Él se pregunta por qué no tiene libertad. [He wonders why he does not have freedom.] Los animales tienen más libertad que él. [Animals have more freedom than him.]',
+      summary_intermediate: 'El príncipe Segismundo reflexiona con profunda amargura sobre su cruel destino y cautiverio. Compara su falta de libertad con las aves, los peces y los ríos, sintiendo una honda injusticia existencial.',
+      summary_advanced: 'Enclaustrado y encadenado en una lúgubre torre, Segismundo declama su desgarrador soliloquio, cuestionando el libre albedrío y lamentando que las criaturas más ínfimas del cosmos gocen de la libertad que a él le es denegada.',
+      lines: [
+        { target: '¡Ay mísero de mí, y ay infelice!', native: 'Ah, wretched me! Oh, unhappy man!' },
+        { target: 'Apurar, cielos, pretendo,', native: 'I try to determine, heavens,' },
+        { target: 'ya que me tratáis así,', native: 'since you treat me so,' },
+        { target: 'qué delito cometí contra vosotros naciendo.', native: 'what crime I committed against you by being born.' }
+      ]
+    }
+  ],
+  hamlet: [
+    {
+      id: 'h1',
+      book_id: 'hamlet',
+      chapter_number: 1,
+      title: 'Act III, Scene I',
+      synopsis: 'Hamlet\'s deep philosophical reflection on existence, suffering, and mortality.',
+      summary_basic: 'Hamlet se pregunta si es mejor vivir o morir. [Hamlet asks himself if it is better to live or to die.] La vida tiene muchos problemas. [Life has many problems.] Él tiene miedo de la muerte. [He is afraid of death.]',
+      summary_intermediate: 'El príncipe Hamlet debate si es más noble tolerar los sufrimientos de la vida o ponerles fin a través de la muerte. Considera que el miedo a lo desconocido después de la muerte nos paraliza de actuar.',
+      summary_advanced: 'Hamlet pronuncia su célebre monólogo existencial sobre el suicidio, el sufrimiento y la parálisis de la voluntad ante el temor de lo desconocido en el más allá, ponderando la inacción contra el enfrentamiento.',
+      lines: [
+        { target: 'To be, or not to be, that is the question:', native: 'Ser o no ser, esa es la cuestión:' },
+        { target: "Whether 'tis nobler in the mind to suffer", native: 'Si es más noble para el espíritu sufrir' },
+        { target: 'The slings and arrows of outrageous fortune,', native: 'Los golpes y dardos de la insultante fortuna,' }
+      ]
+    }
+  ],
+  pride_prejudice: [
+    {
+      id: 'pp1',
+      book_id: 'pride_prejudice',
+      chapter_number: 1,
+      title: 'Chapter I',
+      synopsis: 'The arrival of Mr. Bingley at Netherfield Park and Mrs. Bennet\'s schemes.',
+      summary_basic: 'La señora Bennet quiere casar a sus hijas. [Mrs. Bennet wants to marry her daughters.] Un hombre rico llega al barrio. [A wealthy man arrives in the neighborhood.] Ella le pide a su esposo que lo visite. [She asks her husband to visit him.]',
+      summary_intermediate: 'La señora Bennet está entusiasmada por la llegada de un joven soltero y acaudalado llamado Bingley. Insiste a su esposo, el señor Bennet, para que establezca contacto y así asegurar el futuro de una de sus hijas.',
+      summary_advanced: 'La noticia de que un soltero aristócrata y acaudalado se ha establecido en las inmediaciones altera el ánimo de la señora Bennet, quien apremia con tenacidad a su sarcástico cónyuge para que formalice las visitas sociales de rigor.',
+      lines: [
+        { target: 'It is a truth universally acknowledged,', native: 'Es una verdad mundialmente reconocida,' },
+        { target: 'that a single man in possession of a good fortune,', native: 'que un hombre soltero, dueño de una gran fortuna,' },
+        { target: 'must be in want of a wife.', native: 'necesita una esposa.' }
+      ]
+    }
+  ]
+};
+
 export const LiteratureModule: React.FC = () => {
-  const { nativeLanguage, speechRate, setSpeechRate } = useApp();
-  const [selectedBook, setSelectedBook] = useState<LitExcerpt>(LITERATURE_DATA[0]);
+  const { nativeLanguage, speechRate, setSpeechRate, level, user } = useApp();
+  
+  // Navigation states: 'books' | 'chapters' | 'reader'
+  const [currentView, setCurrentView] = useState<'books' | 'chapters' | 'reader'>('books');
+  const [books, setBooks] = useState<BookType[]>([]);
+  const [selectedBook, setSelectedBook] = useState<BookType | null>(null);
+  const [chapters, setChapters] = useState<ChapterType[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<ChapterType | null>(null);
+  const [progress, setProgress] = useState<ProgressType>({ completed_chapters: [], current_chapter: 1 });
+  const [loading, setLoading] = useState<boolean>(true);
+  const [completing, setCompleting] = useState<boolean>(false);
+  
+  // Layout states for reader
   const [layoutMode, setLayoutMode] = useState<'target' | 'translation'>('translation');
-  const [fontSize, setFontSize] = useState<number>(14); // in px
+  const [fontSize, setFontSize] = useState<number>(14);
   const [isMobile, setIsMobile] = useState<boolean>(false);
 
-  // Filter book recommendations based on target language
   const targetLang = nativeLanguage === 'en' ? 'es' : 'en';
-  const filteredBooks = LITERATURE_DATA.filter(b => b.sourceLang === targetLang);
 
-  // Set default book based on target language
+  // Resize listener
   useEffect(() => {
-    if (filteredBooks.length > 0) {
-      setSelectedBook(filteredBooks[0]);
-    }
-  }, [nativeLanguage]);
-
-  // Handle responsive resize checks for mobile view
-  useEffect(() => {
-    const checkResize = () => {
-      setIsMobile(window.innerWidth < 450);
-    };
+    const checkResize = () => setIsMobile(window.innerWidth < 450);
     checkResize();
     window.addEventListener('resize', checkResize);
     return () => window.removeEventListener('resize', checkResize);
   }, []);
 
+  // Fetch all books on mount or when target language changes
+  useEffect(() => {
+    const fetchBooks = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(getApiUrl('/api/literature/books'));
+        if (!response.ok) throw new Error('API failed');
+        const data = await response.json();
+        setBooks(data.filter((b: BookType) => b.source_lang === targetLang));
+      } catch (err) {
+        console.warn('Using offline fallback books:', err);
+        setBooks(LOCAL_FALLBACK_BOOKS.filter(b => b.source_lang === targetLang));
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBooks();
+  }, [targetLang]);
+
+  // Fetch chapters and progress when a book is selected
+  const handleSelectBook = async (book: BookType) => {
+    setSelectedBook(book);
+    setLoading(true);
+    setCurrentView('chapters');
+
+    try {
+      // 1. Fetch chapters
+      const chapRes = await fetch(getApiUrl(`/api/literature/book/${book.id}/chapters`));
+      if (!chapRes.ok) throw new Error('Failed to fetch chapters');
+      const chapData = await chapRes.json();
+      setChapters(chapData);
+
+      // 2. Fetch progress
+      const userIdParam = user ? `?userId=${user.id}` : '';
+      const progRes = await fetch(getApiUrl(`/api/literature/progress/${book.id}${userIdParam}`));
+      if (progRes.ok) {
+        const progData = await progRes.json();
+        setProgress({
+          completed_chapters: progData.completed_chapters || [],
+          current_chapter: progData.current_chapter || 1
+        });
+      } else {
+        // LocalStorage fallback for progress if not logged in or server fails
+        const localProg = localStorage.getItem(`spanglish_progress_${book.id}`);
+        if (localProg) {
+          setProgress(JSON.parse(localProg));
+        } else {
+          setProgress({ completed_chapters: [], current_chapter: 1 });
+        }
+      }
+    } catch (err) {
+      console.warn('Using offline fallback chapters & progress:', err);
+      setChapters(LOCAL_FALLBACK_CHAPTERS[book.id] || []);
+      
+      const localProg = localStorage.getItem(`spanglish_progress_${book.id}`);
+      if (localProg) {
+        setProgress(JSON.parse(localProg));
+      } else {
+        setProgress({ completed_chapters: [], current_chapter: 1 });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenChapter = (chapter: ChapterType) => {
+    // Prevent opening locked chapters
+    if (chapter.chapter_number > progress.current_chapter) return;
+    setSelectedChapter(chapter);
+    setCurrentView('reader');
+  };
+
+  const handleCompleteChapter = async () => {
+    if (!selectedBook || !selectedChapter) return;
+    setCompleting(true);
+
+    const chNum = selectedChapter.chapter_number;
+    try {
+      const response = await fetch(getApiUrl('/api/literature/progress/complete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id || null,
+          bookId: selectedBook.id,
+          chapterNumber: chNum
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setProgress({
+          completed_chapters: data.completed_chapters || [],
+          current_chapter: data.current_chapter || 1
+        });
+      } else {
+        throw new Error('Server progress save failed');
+      }
+    } catch (err) {
+      // Local fallback progression saving
+      console.warn('Saving progress locally:', err);
+      const completed = [...progress.completed_chapters];
+      if (!completed.includes(chNum)) {
+        completed.push(chNum);
+      }
+      const updated = {
+        completed_chapters: completed,
+        current_chapter: Math.max(progress.current_chapter, chNum + 1)
+      };
+      setProgress(updated);
+      localStorage.setItem(`spanglish_progress_${selectedBook.id}`, JSON.stringify(updated));
+    } finally {
+      setCompleting(false);
+      setCurrentView('chapters');
+      setSelectedChapter(null);
+    }
+  };
+
   const speakLine = (text: string) => {
-    speakTextWithBestVoice(text, selectedBook.sourceLang, speechRate);
+    if (!selectedBook) return;
+    speakTextWithBestVoice(text, selectedBook.source_lang, speechRate);
+  };
+
+  // Helper to get level summary text
+  const getLevelSummary = (chap: ChapterType) => {
+    if (level === 'basic') return chap.summary_basic;
+    if (level === 'intermediate') return chap.summary_intermediate;
+    return chap.summary_advanced;
   };
 
   return (
     <div className="animate-slide-up" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
       
-      {/* Module Title */}
-      <div>
-        <h2 style={{ fontSize: '22px', fontWeight: '800' }}>
-          {nativeLanguage === 'es' ? 'Literatura Clásica' : 'Classic Literature'}
-        </h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-          {nativeLanguage === 'es' 
-            ? 'Domina la lectura nativa y traducción interlineal' 
-            : 'Master reading native literature and interlinear translation'}
-        </p>
-      </div>
-
-      {/* Book selector & Configuration Panels */}
-      <div className="glass-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        
-        {/* Dropdown Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Book size={18} color="var(--primary)" />
-          <select 
-            value={selectedBook.id}
-            onChange={(e) => {
-              const book = LITERATURE_DATA.find(b => b.id === e.target.value);
-              if (book) setSelectedBook(book);
-            }}
-            style={{
-              flex: 1,
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-primary)',
-              padding: '8px 12px',
-              borderRadius: '10px',
-              fontSize: '13px',
-              fontWeight: '600',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
-          >
-            {filteredBooks.map(b => (
-              <option key={b.id} value={b.id}>{b.title} ({b.author})</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Configurations layout row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          
-          {/* Mode Switcher */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
-              Layout
-            </span>
-            <div style={{ display: 'flex', background: 'var(--bg-app)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <button
-                onClick={() => setLayoutMode('target')}
-                style={{
-                  flex: 1,
-                  background: layoutMode === 'target' ? 'var(--primary)' : 'transparent',
-                  border: 'none',
-                  color: 'white',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  padding: '6px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                {nativeLanguage === 'es' ? 'Solo Original' : 'Original Only'}
-              </button>
-              <button
-                onClick={() => setLayoutMode('translation')}
-                style={{
-                  flex: 1,
-                  background: layoutMode === 'translation' ? 'var(--primary)' : 'transparent',
-                  border: 'none',
-                  color: 'white',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  padding: '6px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                {nativeLanguage === 'es' ? 'Traducción' : 'Translation'}
-              </button>
-            </div>
-          </div>
-
-          {/* Size Controller */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
-              Text Size / Font
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-app)', border: '1px solid var(--border)', borderRadius: '8px', height: '28px', padding: '0 4px', justifyContent: 'space-between' }}>
-              <button 
-                onClick={() => setFontSize(prev => Math.max(12, prev - 1))}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '24px', height: '100%', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}
-              >
-                -
-              </button>
-              <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>{fontSize}px</span>
-              <button 
-                onClick={() => setFontSize(prev => Math.min(22, prev + 1))}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '24px', height: '100%', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Speech Rate Adjustment */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
-            <span>🔊 Speech Speed</span>
-            <span>{Math.round(speechRate * 100)}%</span>
-          </div>
-          <input 
-            type="range" 
-            min="0.5" 
-            max="1.5" 
-            step="0.05"
-            value={speechRate}
-            onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-            style={{
-              width: '100%',
-              accentColor: 'var(--primary)',
-              background: 'var(--bg-app)',
-              height: '4px',
-              borderRadius: '2px',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
-          />
-        </div>
-
-      </div>
-
-      {/* Excerpt Reading Panel */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '20px', background: 'var(--surface)' }}>
-        
-        {/* Book Title Header inside reader */}
-        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '8px', textAlign: 'center' }}>
-          <h3 style={{ fontSize: '16px', color: 'var(--primary)' }}>{selectedBook.title}</h3>
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
-            By {selectedBook.author}
-          </p>
-        </div>
-
-        {/* Storyline Synopsis (Advanced feature) */}
-        <div style={{
-          background: 'rgba(139, 92, 246, 0.05)',
-          border: '1px solid rgba(139, 92, 246, 0.15)',
-          padding: '12px',
-          borderRadius: '12px',
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'flex-start'
-        }}>
-          <Info size={14} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
+      {/* 1. BOOKS CAMPAIGN LIST VIEW */}
+      {currentView === 'books' && (
+        <>
           <div>
-            <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
-              {nativeLanguage === 'es' ? 'Sinopsis general' : 'General Synopsis'}
-            </div>
-            <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-              {selectedBook.synopsis}
+            <h2 style={{ fontSize: '22px', fontWeight: '800' }}>
+              {nativeLanguage === 'es' ? 'Aventura Literaria' : 'Literature Adventure'}
+            </h2>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              {nativeLanguage === 'es' 
+                ? 'Elige un libro clásico y avanza capítulo por capítulo.' 
+                : 'Select a classic novel campaign and unlock chapters as you read.'}
             </p>
           </div>
-        </div>
 
-        {/* Chapter Summary (Advanced feature) */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid var(--border)',
-          padding: '12px',
-          borderRadius: '12px',
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'flex-start'
-        }}>
-          <FileText size={14} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
-          <div>
-            <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
-              {nativeLanguage === 'es' ? 'Resumen del Capítulo' : 'Chapter Summary'}
+          {loading ? (
+            <div style={{ display: 'flex', flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+              <div className="pulse-recording" style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary)' }} />
             </div>
-            <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-              {selectedBook.chapterSummary}
-            </p>
+          ) : books.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <Book size={48} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+              <p>No novel campaigns found for your target language.</p>
+              <p style={{ fontSize: '11px', marginTop: '4px' }}>Upload PDFs to `literature_pdfs/` and run `node scripts/ingest_literature.js` to seed novels.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {books.map(book => (
+                <div 
+                  key={book.id} 
+                  className="glass-card" 
+                  onClick={() => handleSelectBook(book)}
+                  style={{ 
+                    padding: '16px', 
+                    cursor: 'pointer', 
+                    transition: 'transform 0.2s ease, border-color 0.2s ease', 
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.borderColor = 'var(--primary)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Book size={18} color="var(--primary)" />
+                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>{book.title}</h3>
+                    </div>
+                    <span style={{ 
+                      fontSize: '9px', 
+                      background: 'rgba(139, 92, 246, 0.15)', 
+                      color: 'var(--primary)', 
+                      padding: '2px 8px', 
+                      borderRadius: '12px',
+                      fontWeight: '800',
+                      textTransform: 'uppercase'
+                    }}>
+                      {book.source_lang === 'es' ? 'Spanish' : 'English'}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>By {book.author}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4', marginTop: '4px' }}>{book.synopsis}</p>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '6px', fontSize: '12px', color: 'var(--primary)', fontWeight: '700' }}>
+                    <span>Start Adventure</span>
+                    <ChevronRight size={14} style={{ marginLeft: '2px' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 2. CHAPTERS PROGRESSION ADVENTURE MAP */}
+      {currentView === 'chapters' && selectedBook && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button 
+              onClick={() => setCurrentView('books')}
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '6px', cursor: 'pointer', display: 'flex', color: 'var(--text-primary)' }}
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <div>
+              <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '800', textTransform: 'uppercase' }}>Book Adventure Map</span>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>{selectedBook.title}</h2>
+            </div>
           </div>
-        </div>
 
-        {/* Paragraph text rendering block */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '4px' }}>
-          {selectedBook.lines.map((line, idx) => {
-            const isDualLayout = layoutMode === 'translation';
-            const isSideBySide = isDualLayout && !isMobile;
-            const isInterlinear = isDualLayout && isMobile;
-
-            return (
+          {/* Progress Banner */}
+          <div className="glass-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase' }}>
+              <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Trophy size={13} color="gold" /> Completion Progress
+              </span>
+              <span style={{ color: 'var(--primary)' }}>
+                {chapters.length > 0 
+                  ? `${Math.round((progress.completed_chapters.length / chapters.length) * 100)}%` 
+                  : '0%'}
+              </span>
+            </div>
+            <div style={{ width: '100%', height: '8px', background: 'var(--bg-app)', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--border)' }}>
               <div 
-                key={idx} 
                 style={{ 
-                  display: isSideBySide ? 'grid' : 'flex',
-                  gridTemplateColumns: isSideBySide ? '1fr 1fr' : 'none',
-                  flexDirection: 'column',
-                  gap: isSideBySide ? '20px' : '4px',
-                  alignItems: 'flex-start',
-                  borderBottom: '1px dashed rgba(255, 255, 255, 0.03)',
-                  paddingBottom: '10px'
+                  height: '100%', 
+                  background: 'var(--primary-gradient)', 
+                  width: `${chapters.length > 0 ? (progress.completed_chapters.length / chapters.length) * 100 : 0}%`,
+                  transition: 'width 0.5s ease-out'
                 }}
-              >
-                
-                {/* Target Language Line */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', width: '100%' }}>
-                  <button 
-                    onClick={() => speakLine(line.target)}
+              />
+            </div>
+          </div>
+
+          {/* Vertical adventure nodes list */}
+          <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', padding: '10px 0', gap: '20px' }}>
+            
+            {/* Vertical connector line */}
+            <div style={{ 
+              position: 'absolute', 
+              left: '27px', 
+              top: '25px', 
+              bottom: '25px', 
+              width: '2px', 
+              background: 'var(--border)', 
+              zIndex: 0 
+            }} />
+
+            {chapters.map((chapter, idx) => {
+              const isCompleted = progress.completed_chapters.includes(chapter.chapter_number);
+              const isActive = chapter.chapter_number === progress.current_chapter;
+              const isLocked = chapter.chapter_number > progress.current_chapter;
+
+              return (
+                <div 
+                  key={chapter.id || idx}
+                  onClick={() => handleOpenChapter(chapter)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    zIndex: 1,
+                    cursor: isLocked ? 'not-allowed' : 'pointer',
+                    opacity: isLocked ? 0.6 : 1,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {/* Node icon circle */}
+                  <div style={{
+                    width: '54px',
+                    height: '54px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    background: isCompleted 
+                      ? 'rgba(16, 185, 129, 0.15)' 
+                      : isActive 
+                        ? 'var(--primary-glow)' 
+                        : 'var(--surface)',
+                    border: isCompleted
+                      ? '2px solid rgb(16, 185, 129)'
+                      : isActive
+                        ? '2.5px solid var(--primary)'
+                        : '2px solid var(--border)',
+                    boxShadow: isActive ? '0 0 12px var(--border-glow)' : 'none',
+                    color: isCompleted ? 'rgb(16, 185, 129)' : isActive ? 'var(--primary)' : 'var(--text-muted)'
+                  }}>
+                    {isCompleted ? (
+                      <CheckCircle size={22} />
+                    ) : isActive ? (
+                      <PlayCircle size={24} style={{ animation: 'voicePulse 1.2s infinite alternate' }} />
+                    ) : (
+                      <Lock size={20} />
+                    )}
+                  </div>
+
+                  {/* Chapter description card */}
+                  <div 
+                    className="card"
                     style={{
-                      background: 'var(--bg-app)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--primary)',
-                      padding: '4px',
-                      borderRadius: '50%',
-                      cursor: 'pointer',
+                      flex: 1,
+                      padding: '12px 14px',
+                      background: isActive ? 'var(--surface)' : 'rgba(255,255,255,0.01)',
+                      border: isActive ? '1px solid var(--border-glow)' : '1px solid var(--border)',
+                      borderRadius: '12px',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginTop: '2px',
-                      flexShrink: 0
+                      flexDirection: 'column',
+                      gap: '4px'
                     }}
                   >
-                    <Volume2 size={12} />
-                  </button>
-                  <span style={{ 
-                    fontSize: `${fontSize}px`, 
-                    color: 'var(--text-primary)', 
-                    lineHeight: '1.6',
-                    fontFamily: 'serif' // classic literary styling
-                  }}>
-                    {line.target}
-                  </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '10px', color: isActive ? 'var(--primary)' : 'var(--text-muted)', fontWeight: '800', textTransform: 'uppercase' }}>
+                        Chapter {chapter.chapter_number}
+                      </span>
+                      {isActive && (
+                        <span style={{ fontSize: '9px', background: 'var(--primary)', color: 'white', padding: '1px 6px', borderRadius: '4px', fontWeight: '800' }}>
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
+                    <h4 style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                      {chapter.title}
+                    </h4>
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.3', marginTop: '2px' }}>
+                      {isLocked ? 'Complete preceding chapters to unlock details.' : chapter.synopsis}
+                    </p>
+                  </div>
+
                 </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
-                {/* Translation Line */}
-                {isSideBySide && (
-                  <span style={{ 
-                    fontSize: `${fontSize - 1}px`, 
-                    color: 'var(--text-secondary)', 
-                    lineHeight: '1.6',
-                    fontFamily: 'var(--font-sans)',
-                    borderLeft: '1px solid var(--border)',
-                    paddingLeft: '12px',
-                    fontStyle: 'italic'
-                  }}>
-                    {line.native}
-                  </span>
-                )}
+      {/* 3. CHAPTER READING & LESSON MODULE */}
+      {currentView === 'reader' && selectedBook && selectedChapter && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button 
+              onClick={() => {
+                setCurrentView('chapters');
+                setSelectedChapter(null);
+              }}
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '6px', cursor: 'pointer', display: 'flex', color: 'var(--text-primary)' }}
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <div>
+              <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '800', textTransform: 'uppercase' }}>
+                Chapter {selectedChapter.chapter_number} Reading
+              </span>
+              <h2 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)' }}>
+                {selectedChapter.title}
+              </h2>
+            </div>
+          </div>
 
-                {isInterlinear && (
-                  <span style={{ 
-                    fontSize: `${fontSize - 2}px`, 
-                    color: 'var(--text-muted)', 
-                    lineHeight: '1.4',
-                    fontFamily: 'var(--font-sans)',
-                    paddingLeft: '24px', // align with text, not speaker button
-                    fontStyle: 'italic'
-                  }}>
-                    {line.native}
-                  </span>
-                )}
-
+          {/* Reader Configuration Panel */}
+          <div className="glass-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* Layout switcher */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Layout</span>
+                <div style={{ display: 'flex', background: 'var(--bg-app)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <button
+                    onClick={() => setLayoutMode('target')}
+                    style={{
+                      flex: 1,
+                      background: layoutMode === 'target' ? 'var(--primary)' : 'transparent',
+                      border: 'none',
+                      color: 'white',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      padding: '6px',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Original
+                  </button>
+                  <button
+                    onClick={() => setLayoutMode('translation')}
+                    style={{
+                      flex: 1,
+                      background: layoutMode === 'translation' ? 'var(--primary)' : 'transparent',
+                      border: 'none',
+                      color: 'white',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      padding: '6px',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Interlinear
+                  </button>
+                </div>
               </div>
-            );
-          })}
-        </div>
 
-      </div>
+              {/* Font size controller */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Text Size</span>
+                <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-app)', border: '1px solid var(--border)', borderRadius: '8px', height: '28px', padding: '0 4px', justifyContent: 'space-between' }}>
+                  <button 
+                    onClick={() => setFontSize(prev => Math.max(12, prev - 1))}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '24px', height: '100%', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    -
+                  </button>
+                  <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>{fontSize}px</span>
+                  <button 
+                    onClick={() => setFontSize(prev => Math.min(22, prev + 1))}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '24px', height: '100%', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
 
-      {/* Tip Banner */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '10px 12px',
-        background: 'rgba(255, 255, 255, 0.02)',
-        border: '1px solid var(--border)',
-        borderRadius: '12px',
-        fontSize: '11px',
-        color: 'var(--text-secondary)',
-        marginBottom: '10px'
-      }}>
-        <HelpCircle size={14} color="var(--primary)" />
-        <span>
-          {nativeLanguage === 'es'
-            ? '¿Ves una palabra difícil? Selecciónala para ver la traducción instantánea.'
-            : 'Unsure about a word? Highlight it to trigger the translation popup.'}
-        </span>
-      </div>
+            {/* Speech Rate Adjustment */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+                <span>🔊 Speech Speed</span>
+                <span>{Math.round(speechRate * 100)}%</span>
+              </div>
+              <input 
+                type="range" 
+                min="0.5" 
+                max="1.5" 
+                step="0.05"
+                value={speechRate}
+                onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                style={{ width: '100%', accentColor: 'var(--primary)', background: 'var(--bg-app)', height: '4px', borderRadius: '2px', outline: 'none', cursor: 'pointer' }}
+              />
+            </div>
+          </div>
+
+          {/* Interactive Chapter Content */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '18px', background: 'var(--surface)' }}>
+            
+            {/* Story plot synopsis (in Native Language) */}
+            <div style={{
+              background: 'rgba(139, 92, 246, 0.04)',
+              border: '1px solid rgba(139, 92, 246, 0.12)',
+              padding: '12px',
+              borderRadius: '12px',
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'flex-start'
+            }}>
+              <Info size={14} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <div style={{ fontSize: '9px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
+                  Chapter Plot (Synopsis)
+                </div>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                  {selectedChapter.synopsis}
+                </p>
+              </div>
+            </div>
+
+            {/* LEVEL-SPECIFIC target language reading details (Adventure Core) */}
+            <div style={{
+              background: 'rgba(255,255,255,0.01)',
+              border: '1px solid var(--border)',
+              padding: '12px',
+              borderRadius: '12px',
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'flex-start'
+            }}>
+              <FileText size={14} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <div style={{ fontSize: '9px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>Story Summary & Lessons ({level.toUpperCase()})</span>
+                  <Sparkles size={10} color="gold" />
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5', fontStyle: 'normal' }}>
+                  {getLevelSummary(selectedChapter)}
+                </p>
+              </div>
+            </div>
+
+            {/* Line-by-line reading exercises */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '4px' }}>
+              <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Key Lines and Lessons:
+              </div>
+              
+              {selectedChapter.lines.map((line, idx) => {
+                const isDual = layoutMode === 'translation';
+                const isSideBySide = isDual && !isMobile;
+                const isInterlinear = isDual && isMobile;
+
+                return (
+                  <div 
+                    key={idx}
+                    style={{
+                      display: isSideBySide ? 'grid' : 'flex',
+                      gridTemplateColumns: isSideBySide ? '1fr 1fr' : 'none',
+                      flexDirection: 'column',
+                      gap: isSideBySide ? '20px' : '4px',
+                      alignItems: 'flex-start',
+                      borderBottom: '1px dashed rgba(255, 255, 255, 0.03)',
+                      paddingBottom: '8px'
+                    }}
+                  >
+                    {/* Target Sentence Block */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', width: '100%' }}>
+                      <button 
+                        onClick={() => speakLine(line.target)}
+                        style={{
+                          background: 'var(--bg-app)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--primary)',
+                          padding: '4px',
+                          borderRadius: '50%',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginTop: '2px',
+                          flexShrink: 0
+                        }}
+                      >
+                        <Volume2 size={11} />
+                      </button>
+                      <span style={{ 
+                        fontSize: `${fontSize}px`, 
+                        color: 'var(--text-primary)', 
+                        lineHeight: '1.5',
+                        fontFamily: 'serif'
+                      }}>
+                        {line.target}
+                      </span>
+                    </div>
+
+                    {/* Translation blocks */}
+                    {isSideBySide && (
+                      <span style={{ 
+                        fontSize: `${fontSize - 1}px`, 
+                        color: 'var(--text-secondary)', 
+                        lineHeight: '1.5',
+                        borderLeft: '1px solid var(--border)',
+                        paddingLeft: '12px',
+                        fontStyle: 'italic'
+                      }}>
+                        {line.native}
+                      </span>
+                    )}
+
+                    {isInterlinear && (
+                      <span style={{ 
+                        fontSize: `${fontSize - 2}px`, 
+                        color: 'var(--text-muted)', 
+                        lineHeight: '1.4',
+                        paddingLeft: '23px',
+                        fontStyle: 'italic'
+                      }}>
+                        {line.native}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+
+          {/* Help Banner */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 12px',
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            fontSize: '11px',
+            color: 'var(--text-secondary)'
+          }}>
+            <HelpCircle size={14} color="var(--primary)" />
+            <span>
+              {nativeLanguage === 'es'
+                ? '¿Ves una palabra difícil? Selecciónala para ver la traducción instantánea.'
+                : 'Highlight any word or phrase on the screen to trigger translation overlays.'}
+            </span>
+          </div>
+
+          {/* COMPLETE CHAPTER ACTION (only if it's the current active chapter in progression) */}
+          {selectedChapter.chapter_number === progress.current_chapter && (
+            <button
+              onClick={handleCompleteChapter}
+              disabled={completing}
+              style={{
+                width: '100%',
+                background: 'var(--primary-gradient)',
+                border: 'none',
+                color: 'white',
+                fontWeight: '700',
+                fontSize: '14px',
+                padding: '14px',
+                borderRadius: '14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 6px 20px rgba(139, 92, 246, 0.3)',
+                marginTop: '10px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+            >
+              {completing ? (
+                <>Completing...</>
+              ) : (
+                <>
+                  <Sparkles size={16} />
+                  <span>Complete Chapter & Continue Adventure 🚀</span>
+                </>
+              )}
+            </button>
+          )}
+        </>
+      )}
 
     </div>
   );
