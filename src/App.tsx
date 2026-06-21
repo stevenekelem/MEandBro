@@ -15,7 +15,7 @@ const App: React.FC = () => {
   const [currentTime, setCurrentTime] = useState('');
 
   // Floating selection translation hook
-  const { result, translateText, speakText, closeBubble } = useHighlightTranslation();
+  const { result, speakText, closeBubble, isSaved, handleSaveWord } = useHighlightTranslation();
 
   // Tick the clock for status bar
   useEffect(() => {
@@ -87,78 +87,56 @@ const App: React.FC = () => {
                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Translating...</span>
                     </div>
                   ) : result.translation ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>
                         {result.translation}
                       </span>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '4px' }}>
+                        <button
+                          onClick={speakText}
+                          style={{
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            color: 'var(--primary)',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            padding: '6px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Volume2 size={10} />
+                          <span>Speak</span>
+                        </button>
+                        
+                        <button
+                          onClick={handleSaveWord}
+                          disabled={isSaved}
+                          style={{
+                            background: isSaved ? 'rgba(16, 185, 129, 0.1)' : 'var(--primary-gradient)',
+                            border: isSaved ? '1px solid rgba(16, 185, 129, 0.2)' : 'none',
+                            borderRadius: '8px',
+                            color: isSaved ? '#10b981' : 'white',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            padding: '6px',
+                            cursor: isSaved ? 'default' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <span>{isSaved ? '✓ Saved' : 'Save'}</span>
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                      <button
-                        onClick={translateText}
-                        style={{
-                          background: 'var(--primary-gradient)',
-                          border: 'none',
-                          borderRadius: '8px',
-                          color: 'white',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          padding: '6px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <Languages size={10} />
-                        <span>Translate</span>
-                      </button>
-                      <button
-                        onClick={speakText}
-                        style={{
-                          background: 'var(--surface)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '8px',
-                          color: 'var(--text-primary)',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          padding: '6px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <Volume2 size={10} />
-                        <span>Speak</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {result.translation && (
-                    <button
-                      onClick={speakText}
-                      style={{
-                        background: 'var(--surface)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                        color: 'var(--primary)',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        padding: '6px 0',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      <Volume2 size={12} />
-                      <span>Hear Pronunciation</span>
-                    </button>
-                  )}
+                  ) : null}
                 </div>
               )}
 

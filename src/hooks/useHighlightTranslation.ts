@@ -93,7 +93,7 @@ export interface TranslationResult {
 }
 
 export const useHighlightTranslation = () => {
-  const { targetLanguage, speechRate, saveWord, incrementWordsTranslated } = useApp();
+  const { targetLanguage, speechRate, saveWord, incrementWordsTranslated, savedVocabulary } = useApp();
   const [result, setResult] = useState<TranslationResult>({
     text: '',
     translation: '',
@@ -279,7 +279,7 @@ export const useHighlightTranslation = () => {
   }, [handleSelection, handleWordClick]);
 
   // Perform translation
-  const translateText = async () => {
+  const translateText = useCallback(async () => {
     if (!result.text) return;
     
     const queryWord = result.text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡]/g,"").trim();
@@ -292,7 +292,6 @@ export const useHighlightTranslation = () => {
         translation: localMatch,
         isLoading: false
       }));
-      saveWord(result.text, localMatch, 'Dictionary');
       incrementWordsTranslated();
       return;
     }
@@ -317,7 +316,6 @@ export const useHighlightTranslation = () => {
           translation: translatedText,
           isLoading: false
         }));
-        saveWord(result.text, translatedText, 'MyMemory');
         incrementWordsTranslated();
         return;
       }
@@ -348,7 +346,6 @@ export const useHighlightTranslation = () => {
             translation: cleanTranslation,
             isLoading: false
           }));
-          saveWord(result.text, cleanTranslation, 'Gemini');
           incrementWordsTranslated();
         } else {
           throw new Error('No translation text returned from Gemini');
@@ -363,7 +360,14 @@ export const useHighlightTranslation = () => {
         }));
       }
     }
-  };
+  }, [result.text, targetLanguage, incrementWordsTranslated]);
+
+  // Auto trigger translation when bubble is open and text is set
+  useEffect(() => {
+    if (result.isOpen && result.text && !result.translation && !result.isLoading) {
+      translateText();
+    }
+  }, [result.isOpen, result.text, result.translation, result.isLoading, translateText]);
 
   // Text-To-Speech
   const speakText = () => {
@@ -371,10 +375,21 @@ export const useHighlightTranslation = () => {
     speakTextWithBestVoice(result.text, targetLanguage, speechRate);
   };
 
+  const isSaved = savedVocabulary.some(
+    v => v.word.toLowerCase() === result.text.toLowerCase().trim()
+  );
+
+  const handleSaveWord = useCallback(() => {
+    if (!result.text || !result.translation || result.isLoading) return;
+    saveWord(result.text, result.translation, 'Highlighted');
+  }, [result.text, result.translation, result.isLoading, saveWord]);
+
   return {
     result,
     translateText,
     speakText,
     closeBubble,
+    isSaved,
+    handleSaveWord
   };
 };

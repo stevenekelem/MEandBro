@@ -108,6 +108,8 @@ export const ChatModule: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const latestTranscriptRef = useRef('');
+  const wasListeningRef = useRef(false);
 
   // Compute available phrases based on source
   const phrases = React.useMemo(() => {
@@ -146,6 +148,16 @@ export const ChatModule: React.FC = () => {
     }
   }, []);
 
+  const onSpeechStopped = () => {
+    if (!wasListeningRef.current) return;
+    wasListeningRef.current = false;
+    setListening(false);
+    const finalTranscript = latestTranscriptRef.current;
+    if (activeSubMode !== 'chat' && finalTranscript) {
+      evaluatePronunciation(finalTranscript);
+    }
+  };
+
   // Hybrid speech recognition initializer
   const toggleSpeech = async () => {
     if (listening) {
@@ -154,6 +166,8 @@ export const ChatModule: React.FC = () => {
     }
 
     setListening(true);
+    wasListeningRef.current = true;
+    latestTranscriptRef.current = '';
     const langCode = targetLanguage === 'es' ? 'es-MX' : 'en-US';
 
     if (Capacitor.isNativePlatform()) {
@@ -171,18 +185,31 @@ export const ChatModule: React.FC = () => {
           language: langCode,
           maxResults: 1,
           prompt: "Habla ahora / Speak now",
-          partialResults: false,
-          popup: true
+          partialResults: true,
+          popup: false
         });
 
         SpeechRecognition.addListener('partialResults', (data: any) => {
           if (data.matches && data.matches.length > 0) {
-            handleSpeechTranscript(data.matches[0]);
+            const transcript = data.matches[0];
+            latestTranscriptRef.current = transcript;
+            if (activeSubMode === 'chat') {
+              setInputText(transcript);
+            } else {
+              setPronounceTranscript(transcript);
+            }
+          }
+        });
+
+        SpeechRecognition.addListener('listeningState', (data: { status: 'started' | 'stopped' }) => {
+          if (data.status === 'stopped') {
+            onSpeechStopped();
           }
         });
       } catch (error) {
         console.error('Capacitor speech recognition error:', error);
         setListening(false);
+        wasListeningRef.current = false;
       }
     } else {
       // 2. Desktop/Browser Build: Use Web Speech API fallback
@@ -192,43 +219,50 @@ export const ChatModule: React.FC = () => {
       const recognition = new SpeechRecognitionAPI();
       recognitionRef.current = recognition;
       recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.interimResults = true;
       recognition.lang = langCode;
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        handleSpeechTranscript(transcript);
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        latestTranscriptRef.current = transcript;
+        if (activeSubMode === 'chat') {
+          setInputText(transcript);
+        } else {
+          setPronounceTranscript(transcript);
+        }
       };
 
       recognition.onerror = (event: any) => {
         console.error('Web speech recognition error:', event.error);
         setListening(false);
+        wasListeningRef.current = false;
       };
 
       recognition.onend = () => {
-        setListening(false);
+        onSpeechStopped();
       };
 
       recognition.start();
     }
   };
 
-  const stopListening = () => {
-    setListening(false);
-    if (!Capacitor.isNativePlatform() && recognitionRef.current) {
+  const stopListening = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { SpeechRecognition } = await import('@capacitor-community/speech-recognition');
+        await SpeechRecognition.stop();
+      } catch (error) {
+        console.error('Capacitor speech stop error:', error);
+      }
+    } else if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
+    onSpeechStopped();
   };
 
-  const handleSpeechTranscript = (transcript: string) => {
-    setListening(false);
-    if (activeSubMode === 'chat') {
-      setInputText(transcript);
-    } else {
-      setPronounceTranscript(transcript);
-      evaluatePronunciation(transcript);
-    }
-  };
 
   const startStudySession = async (concept: Concept) => {
     setActiveConcept(concept);
@@ -236,8 +270,6 @@ export const ChatModule: React.FC = () => {
     clearChatHistory();
     setActiveSubMode('chat');
     setLoading(true);
-
-    const initialSystemMessage = `[SYSTEM_LESSON_START] The student wants to start a structured study session learning about "${concept.title}". Description: "${concept.description}". Please introduce this concept in detail. Use any textbook chunks if available, explain the rules clearly, and ask the student 1 practice question to test their understanding.`;
 
     const userFriendlyText = `Hi! I would like to start a structured lesson on "${concept.title}".`;
     addChatMessage('user', userFriendlyText);
@@ -247,7 +279,7 @@ export const ChatModule: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: initialSystemMessage,
+          message: userFriendlyText,
           history: [],
           nativeLanguage,
           level,

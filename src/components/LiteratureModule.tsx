@@ -88,6 +88,36 @@ const LOCAL_FALLBACK_CHAPTERS: Record<string, ChapterType[]> = {
         { target: 'no ha mucho tiempo que vivía un hidalgo de los de lanza en astillero,', native: 'not long ago there lived a nobleman, one of those with a lance in a rack,' },
         { target: 'adarga antigua, rocín flaco y galgo corredor.', native: 'an ancient shield, a skinny nag, and a racing greyhound.' }
       ]
+    },
+    {
+      id: 'q2',
+      book_id: 'quijote',
+      chapter_number: 2,
+      title: 'Capítulo II',
+      synopsis: 'Don Quijote realiza su primera salida en solitario buscando aventuras y llega a una venta local, confundiéndola con un gran castillo medieval.',
+      summary_basic: 'Él monta en su caballo Rocinante. [He rides his horse Rocinante.] Viaja todo el día bajo el sol. [He travels all day under the sun.] Llega a una venta por la noche. [He arrives at an inn by night.]',
+      summary_intermediate: 'Al amanecer, Don Quijote emprende su primera salida en secreto. Después de cabalgar todo el día bajo un sol abrasador, divisa una humilde venta, la cual confunde con un castillo de altas torres y puentes levadizos.',
+      summary_advanced: 'Sin dar parte a persona alguna, nuestro flamante caballero andante inicia su andadura en la calurosa llanura manchega. Al caer la noche, fatigado y hambriento, arriba a una hostería rural que sus desvaríos transfiguran de inmediato en una fortaleza feudal.',
+      lines: [
+        { target: 'Salió al campo con grandísimo contento,', native: 'He went out into the field with very great joy,' },
+        { target: 'pero le asaltó un pensamiento terrible:', native: 'but a terrible thought assailed him:' },
+        { target: 'que no estaba armado caballero.', native: 'that he was not yet dubbed a knight.' }
+      ]
+    },
+    {
+      id: 'q3',
+      book_id: 'quijote',
+      chapter_number: 3,
+      title: 'Capítulo III',
+      synopsis: 'La cómica ceremonia nocturna en la venta donde el astuto hostelero decide "armar caballero" a Don Quijote para librarse de él.',
+      summary_basic: 'Él vela sus armas en el patio. [He watches his weapons in the courtyard.] El ventero le da un golpe en el hombro. [The innkeeper strikes him on the shoulder.] Ahora es un caballero oficial. [Now he is an official knight.]',
+      summary_intermediate: 'Para ser un caballero legítimo, Don Quijote insiste en velar sus armas en el patio de la venta. Tras un altercado con unos arrieros, el socarrón ventero decide complacerle y armarlo caballero en una cómica ceremonia.',
+      summary_advanced: 'Persuadido de la urgencia ritual, Don Quijote realiza la vela de sus armas junto a una pila de agua, repeliendo con violencia a los arrieros que pretendían moverlas. El astuto ventero realiza la farsa de armarlo caballero para acelerar su partida.',
+      lines: [
+        { target: 'El ventero le aconsejó que llevase dinero', native: 'The innkeeper advised him to carry money' },
+        { target: 'y camisas limpias,', native: 'and clean shirts,' },
+        { target: 'porque los caballeros de los libros siempre los tenían.', native: 'because the knights in the books always had them.' }
+      ]
     }
   ],
   principito: [
@@ -104,6 +134,37 @@ const LOCAL_FALLBACK_CHAPTERS: Record<string, ChapterType[]> = {
         { target: 'Viví así, solo, sin nadie con quien hablar verdaderamente,', native: 'I lived like this, alone, with no one to truly talk to,' },
         { target: 'hasta que tuve una avería en el desierto del Sahara hace seis años.', native: 'until I had a breakdown in the Sahara Desert six years ago.' },
         { target: 'Algo se había roto en mi motor.', native: 'Something had broken in my engine.' }
+      ]
+    },
+    {
+      id: 'p2',
+      book_id: 'principito',
+      chapter_number: 2,
+      title: 'Capítulo IV',
+      synopsis: 'El narrador descubre los orígenes cósmicos del principito y reflexiona sobre el asteroide B-612 y el punto de vista rígido de los adultos.',
+      summary_basic: 'El principito viene de un asteroide pequeño. [The little prince comes from a small asteroid.] Se llama B-612. [It is called B-612.] Los adultos solo quieren números. [Adults only want numbers.]',
+      summary_intermediate: 'El narrador descubre que el hogar del principito es el asteroide B-612. Critica cómo las personas mayores están obsesionadas con las cifras y los números, perdiendo de vista la belleza esencial y los detalles poéticos de la vida.',
+      summary_advanced: 'La reconstrucción biográfica del principito revela que su planeta de origen es el minúsculo asteroide B-612, catalogado por un astrónomo turco. El autor deplora la predisposición adulta a cuantificarlo todo mediante cifras financieras e informativas.',
+      lines: [
+        { target: 'Las personas mayores adoran las cifras.', native: 'Grown-ups love numbers.' },
+        { target: 'Nunca te preguntan sobre lo esencial.', native: 'They never ask you about essential matters.' },
+        { target: 'Si les dices: "He visto una hermosa casa de ladrillos rosas...",', native: 'If you say to them: "I have seen a beautiful house of pink bricks...",' },
+        { target: 'no pueden imaginarse la casa.', native: 'they cannot imagine the house.' }
+      ]
+    },
+    {
+      id: 'p3',
+      book_id: 'principito',
+      chapter_number: 3,
+      title: 'Capítulo VII',
+      synopsis: 'El principito llora al preocuparse por el peligro que corren las flores de su planeta a causa de las ovejas, cuestionando lo que es verdaderamente importante.',
+      summary_basic: 'Las ovejas comen flores. [Sheep eat flowers.] El principito tiene una flor única. [The little prince has a unique flower.] Él tiene miedo de perderla. [He is afraid of losing it.]',
+      summary_intermediate: 'El principito discute con el piloto sobre si los corderos se comen las flores con espinas. Al darse cuenta de que su querida rosa corre peligro, estalla en lágrimas, defendiendo la importancia de cuidar el amor y la belleza.',
+      summary_advanced: 'Confrontado con la realidad ecológica de que los corderos se alimentan de arbustos y espinas, el principito expresa una angustia desgarradora por la vulnerabilidad de su flor única, reprochándole al piloto su frialdad científica.',
+      lines: [
+        { target: 'Si una persona ama a una flor de la que no existe más que un ejemplar...', native: 'If a person loves a flower of which there is only one single example...' },
+        { target: 'eso basta para que sea feliz cuando la mira.', native: 'that is enough to make him happy when he looks at it.' },
+        { target: 'Ella se dice: "Mi flor está allí en alguna parte..."', native: 'She says to herself: "My flower is out there somewhere..."' }
       ]
     }
   ],
@@ -123,6 +184,37 @@ const LOCAL_FALLBACK_CHAPTERS: Record<string, ChapterType[]> = {
         { target: 'ya que me tratáis así,', native: 'since you treat me so,' },
         { target: 'qué delito cometí contra vosotros naciendo.', native: 'what crime I committed against you by being born.' }
       ]
+    },
+    {
+      id: 'v2',
+      book_id: 'vida_sueno',
+      chapter_number: 2,
+      title: 'Jornada II, Escena VI',
+      synopsis: 'Segismundo es llevado a la corte bajo los efectos de un somnífero, reaccionando con furia y violencia ante su nueva realidad como príncipe heredero.',
+      summary_basic: 'Segismundo despierta en un palacio rico. [Segismundo wakes up in a rich palace.] Él se enfada con los sirvientes. [He gets angry with the servants.] Lanza a un hombre por la ventana. [He throws a man out the window.]',
+      summary_intermediate: 'Segismundo despierta vestido de seda en la corte y descubre que es el príncipe de Polonia. Confundido y furioso por el engaño de su padre Basilio, reacciona violentamente contra los cortesanos y comete actos de crueldad.',
+      summary_advanced: 'Trasladado narcotizado al palacio real por orden del rey Basilio, Segismundo experimenta un súbito despertar cortesano. Su carácter, forjado en el cautiverio hostil, eclosiona en soberbia tiránica, agrediendo a quienes pretenden moderar su ira.',
+      lines: [
+        { target: '¿Yo en palacio? ¿Yo vestido de sedas?', native: 'Me in palace? Me dressed in silks?' },
+        { target: 'Decir que sueño es engaño;', native: 'To say I dream is a delusion;' },
+        { target: 'bien sé que despierto estoy.', native: 'I know well that I am awake.' }
+      ]
+    },
+    {
+      id: 'v3',
+      book_id: 'vida_sueno',
+      chapter_number: 3,
+      title: 'Jornada III, Escena X',
+      synopsis: 'La célebre conclusión filosófica sobre la transitoriedad de la vida terrenal y la ilusión del poder.',
+      summary_basic: 'Segismundo vuelve a la torre encadenado. [Segismundo returns to the tower in chains.] Él cree que todo fue un sueño. [He thinks everything was a dream.] La vida es una ilusión. [Life is an illusion.]',
+      summary_intermediate: 'Devuelto a su prisión y convencido de que su estancia en el palacio fue una ilusión, Segismundo pronuncia sus famosos versos sobre la fugacidad de la vida, concluyendo que toda la existencia es un sueño pasajero.',
+      summary_advanced: 'Conducido nuevamente a su confinamiento tras su desastroso despliegue cortesano, Segismundo asimila la lección de Clotaldo. Su soliloquio metafísico postula que los triunfos temporales y las jerarquías terrenales son meros delirios oníricos.',
+      lines: [
+        { target: '¿Qué es la vida? Un frenesí.', native: 'What is life? A frenzy.' },
+        { target: '¿Qué es la vida? Una ilusión, una sombra, una ficción,', native: 'What is life? An illusion, a shadow, a fiction,' },
+        { target: 'y el mayor bien es pequeño; que toda la vida es sueño,', native: 'and the greatest good is small; for all life is a dream,' },
+        { target: 'y los sueños, sueños son.', native: 'and dreams, dreams are.' }
+      ]
     }
   ],
   hamlet: [
@@ -140,6 +232,34 @@ const LOCAL_FALLBACK_CHAPTERS: Record<string, ChapterType[]> = {
         { target: "Whether 'tis nobler in the mind to suffer", native: 'Si es más noble para el espíritu sufrir' },
         { target: 'The slings and arrows of outrageous fortune,', native: 'Los golpes y dardos de la insultante fortuna,' }
       ]
+    },
+    {
+      id: 'h2',
+      book_id: 'hamlet',
+      chapter_number: 2,
+      title: 'Act III, Scene II',
+      synopsis: 'Hamlet sets up a theatrical play ("The Mousetrap") depicting his father\'s murder to trap King Claudius into revealing his guilt.',
+      summary_basic: 'Hamlet hace una obra de teatro. [Hamlet makes a play.] Los actores imitan un asesinato. [The actors imitate a murder.] El rey Claudio se asusta y sale. [King Claudius gets scared and leaves.]',
+      summary_intermediate: 'Hamlet instruye a un grupo de actores para que representen un regicidio similar al de su padre frente al rey Claudio. Al presenciar la escena, Claudio se altera enormemente y abandona la sala, confirmando su culpabilidad.',
+      summary_advanced: 'Con el propósito de obtener pruebas empíricas sobre la traición de Claudio, Hamlet organiza una escenificación teatral de la felonía descrita por el espectro. La violenta salida de la corte del usurpador constata de forma irrevocable su magnicidio.',
+      lines: [
+        { target: 'The play\'s the thing', native: 'La obra de teatro es la trampa' },
+        { target: 'wherein I\'ll catch the conscience of the king.', native: 'en la que atraparé la conciencia del rey.' }
+      ]
+    },
+    {
+      id: 'h3',
+      book_id: 'hamlet',
+      chapter_number: 3,
+      title: 'Act III, Scene IV',
+      synopsis: 'Hamlet confronts his mother Gertrude in her chamber and accidentally kills Polonius who was hiding behind the curtain.',
+      summary_basic: 'Hamlet habla enfadado con su madre. [Hamlet talks angrily with his mother.] Alguien escucha detrás de una cortina. [Someone listens behind a curtain.] Hamlet saca su espada y le mata. [Hamlet draws his sword and kills him.]',
+      summary_intermediate: 'Hamlet reprende duramente a su madre Gertrudis en sus aposentos. Al oír un ruido detrás de los tapices, ataca impulsivamente y asesina a Polonius, confundiéndolo con el rey Claudio.',
+      summary_advanced: 'Durante una tempestuosa entrevista maternofilial encaminada a denunciar su infidelidad conyugal, Hamlet advierte un espía tras los cortinajes. Desenvainando su acero en un rapto irreflexivo, atraviesa a Polonius creyendo herir al soberano.',
+      lines: [
+        { target: 'Mother, you have my father much offended.', native: 'Madre, habéis ofendido mucho a mi padre.' },
+        { target: 'How now! a rat? Dead, for a ducat, dead!', native: '¡Cómo! ¿una rata? ¡Muerta, por un ducado, muerta!' }
+      ]
     }
   ],
   pride_prejudice: [
@@ -156,6 +276,36 @@ const LOCAL_FALLBACK_CHAPTERS: Record<string, ChapterType[]> = {
         { target: 'It is a truth universally acknowledged,', native: 'Es una verdad mundialmente reconocida,' },
         { target: 'that a single man in possession of a good fortune,', native: 'que un hombre soltero, dueño de una gran fortuna,' },
         { target: 'must be in want of a wife.', native: 'necesita una esposa.' }
+      ]
+    },
+    {
+      id: 'pp2',
+      book_id: 'pride_prejudice',
+      chapter_number: 2,
+      title: 'Chapter II',
+      synopsis: 'Mr. Bennet secretly visits Mr. Bingley first, teasing his wife and daughters before revealing the surprise.',
+      summary_basic: 'El señor Bennet visita al nuevo vecino. [Mr. Bennet visits the new neighbor.] Él no le dice nada a su familia. [He does not tell his family anything.] Luego lo revela en la cena. [Later he reveals it at dinner.]',
+      summary_intermediate: 'Aunque simula desinterés ante los ruegos de su esposa, el señor Bennet es uno de los primeros en presentar sus respetos al señor Bingley. Pasa días divirtiendo a sus hijas con sarcasmo antes de revelar su visita secreta.',
+      summary_advanced: 'Ocultando sus verdaderos propósitos bajo un manto de aparente apatía y cinismo intelectual, el señor Bennet ejecuta su visita al recién llegado. Prolonga el suspenso doméstico con ironía antes de confirmar la formalización de la alianza vecinal.',
+      lines: [
+        { target: 'Mr. Bennet was among the earliest of those who waited on Mr. Bingley.', native: 'El señor Bennet estuvo entre los primeros que visitaron al señor Bingley.' },
+        { target: 'He had always intended to visit him,', native: 'El señor siempre había tenido la intención de visitarlo,' },
+        { target: 'aunque hasta el último momento siempre declaró que no iría.', native: 'though to the last always declaring that he should not go.' }
+      ]
+    },
+    {
+      id: 'pp3',
+      book_id: 'pride_prejudice',
+      chapter_number: 3,
+      title: 'Chapter III',
+      synopsis: 'The assembly ball at Meryton, where Mr. Darcy makes a cold first impression by refusing to dance with Elizabeth Bennet.',
+      summary_basic: 'Ellos van a un baile público. [They go to a public ball.] El señor Darcy es muy orgulloso. [Mr. Darcy is very proud.] Él no quiere bailar con Elizabeth. [He does not want to dance with Elizabeth.]',
+      summary_intermediate: 'En el baile de Meryton, el señor Bingley es encantador, pero su amigo el señor Darcy causa una impresión nefasta debido a su soberbia. Darcy llega a insultar a Elizabeth Bennet negándose a sacarla a bailar.',
+      summary_advanced: 'La asamblea danzante de Meryton constata el contraste social entre el afable Bingley y la altanería aristocrática de Darcy. Este último desata la antipatía de la comunidad tras calificar a Elizabeth Bennet como una joven meramente pasable.',
+      lines: [
+        { target: 'She is tolerable, but not handsome enough to tempt me;', native: 'Es pasable, pero no lo suficientemente hermosa para tentarme;' },
+        { target: 'and I am in no humour at present to give consequence', native: 'y no estoy de humor en este momento para dar importancia' },
+        { target: 'to young ladies who are slighted by other men.', native: 'a señoritas que son despreciadas por otros hombres.' }
       ]
     }
   ]
