@@ -154,6 +154,9 @@ body {
     box-shadow: none;
     aspect-ratio: auto;
   }
+  .screen-header {
+    display: none !important;
+  }
 }
 
 /* Device Screen layout items */

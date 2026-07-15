@@ -446,11 +446,79 @@ app.post('/api/pronounce/generate', async (req, res) => {
 });
 
 
+// Heuristic to detect translation language of an article to find matching daily news
+function matchesNativeLanguage(article, nativeLanguage) {
+  if (!article.vocab || !Array.isArray(article.vocab) || article.vocab.length === 0) {
+    return false;
+  }
+  const sampleTranslation = article.vocab[0].translation || '';
+  
+  // English words regex
+  const englishWords = /\b(the|of|and|a|to|in|is|you|that|it|he|was|for|on|are|as|with|his|they|i|at|be|this|have|from|or|one|had|by|word|but|not|what|all|were|we|when|your|can|said|there|use|an|each|which|she|do|how|their|if|will|up|other|about|out|many|then|them|these|so|some|her|would|make|like|him|into|time|has|look|two|more|write|go|see|number|no|way|could|people|my|than|first|water|been|call|who|oil|its|now|find|long|down|day|did|get|come|made|may|part)\b/i;
+  
+  // Spanish words regex
+  const spanishWords = /\b(el|la|los|las|un|una|unos|unas|de|del|y|en|que|es|son|se|un|con|por|para|como|su|sus|al|lo|como|más|pero|o|este|esta|estos|estas|ese|esa|esos|esas|aquel|aquella|aquellos|aquellas|mi|mis|tu|tus|su|sus|nuestro|nuestra|nuestros|nuestras|yo|tú|él|ella|nosotros|vosotros|ellos|ellas|me|te|le|nos|os|les|este|esta|todo|todos|toda|todas|otro|otra|otros|otras|mismo|misma|mismos|mismas|alguno|alguna|algunos|algunas|ninguno|ninguna|ningunos|ningunas|mucho|mucha|muchos|muchas|poco|poca|pocos|pocas|tanto|tanta|tantos|tantas|demasiado|demasiada|demasiados|demasiadas|cuyo|cuya|cuyos|cuyas|donde|cuando|como|porque|si|no|sí|bien|mal|muy|mucho|poco|hoy|ayer|mañana|ahora|después|antes|aquí|allí|allá|cerca|lejos|dentro|fuera|arriba|abajo|delante|detrás|encima|debajo)\b/i;
+
+  const textToTest = sampleTranslation.toLowerCase();
+  const hasEnglish = englishWords.test(textToTest);
+  const hasSpanish = spanishWords.test(textToTest);
+
+  if (nativeLanguage === 'en') {
+    // English native speaker: the translation is English
+    return hasEnglish || !hasSpanish;
+  } else {
+    // Spanish native speaker: the translation is Spanish
+    return hasSpanish || !hasEnglish;
+  }
+}
+
 // 3. News Synopsis Generator
 app.post('/api/news', async (req, res) => {
   const { nativeLanguage = 'en', level = 'intermediate' } = req.body;
   const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
 
+  // 3a. If Supabase is configured, try to fetch pre-generated news from the database
+  if (supabase) {
+    try {
+      console.log(`[News API] Querying database for daily news articles matching native language: ${nativeLanguage}`);
+      const { data: dbArticles, error: dbError } = await supabase
+        .from('news_articles')
+        .select('*')
+        .is('user_id', null)
+        .order('created_at', { ascending: false })
+        .limit(15);
+      
+      if (!dbError && dbArticles && dbArticles.length > 0) {
+        // Filter articles using the language heuristic to find ones matching the requested native language
+        const matchedArticles = dbArticles.filter(art => matchesNativeLanguage(art, nativeLanguage));
+        
+        if (matchedArticles.length >= 2) {
+          console.log(`[News API] Found ${matchedArticles.length} cached daily news articles. Returning top 2.`);
+          const responseData = matchedArticles.slice(0, 2).map(art => ({
+            id: art.id,
+            title: art.title,
+            category: art.category,
+            summary: level === 'basic' 
+              ? art.summary_basic 
+              : level === 'intermediate' 
+                ? art.summary_intermediate 
+                : art.summary_advanced,
+            vocab: Array.isArray(art.vocab) ? art.vocab : [],
+            submitted_url: art.submitted_url || undefined,
+            created_at: art.created_at
+          }));
+          return res.json(responseData);
+        }
+      }
+      if (dbError) {
+        console.warn(`[News API] Database fetch error: ${dbError.message}`);
+      }
+    } catch (err) {
+      console.warn('[News API] Exception during database cache check:', err.message);
+    }
+  }
+
+  // 3b. Offline fallback if no API key is configured
   if (!ai) {
     // Return high-quality pre-baked local news data
     const localNews = nativeLanguage === 'en' 
@@ -521,25 +589,24 @@ app.post('/api/news', async (req, res) => {
     return res.json(localNews);
   }
 
+  // 3c. Generate daily articles using Gemini (cache-miss)
   try {
     const targetName = targetLanguage === 'es' ? 'Spanish' : 'English';
     const nativeName = nativeLanguage === 'es' ? 'Spanish' : 'English';
 
-    const systemPrompt = `You are a creative content generator for a language learning app. 
-Generate 2 short news stories in ${targetName} suited for a ${level.toUpperCase()} language learner.
+    const systemPrompt = `You are a creative editor for a language learning app called Spanglish.
+Generate 2 short news stories in ${targetName} suited for a language learner whose native language is ${nativeName}.
 Each story must contain:
-1. "id": A unique string like "n1", "n2".
-2. "title": A catchy title in ${targetName}.
-3. "category": One word (e.g. "Science", "Culture", "Sports", "Technology").
-4. "summary": The article text in ${targetName}.
-   - For BASIC: 3-4 very short sentences. Immediately follow each sentence with its literal translation in ${nativeName} inside square brackets. E.g., "The weather is hot. [El clima está caluroso.]"
-   - For INTERMEDIATE: A cohesive paragraph (4-6 sentences) using moderate-level vocabulary and natural sentence structures. No translation brackets.
-   - For ADVANCED: A native-like paragraph (5-8 sentences) using sophisticated terms, business or formal register, and complex clauses. No translation brackets.
-5. "vocab": An array of 3 key vocabulary words from the article, represented as objects: {"word": "${targetName} word", "translation": "${nativeName} translation"}.
+1. "title": A catchy title in ${targetName}.
+2. "category": One word (e.g. "Science", "Culture", "Sports", "Technology").
+3. "summary_basic": 3-4 very short, simple sentences in ${targetName}. Immediately follow each sentence with its literal translation in ${nativeName} inside square brackets, e.g. "Sentence. [Translation.]"
+4. "summary_intermediate": A cohesive intermediate paragraph (4-6 sentences) in ${targetName} using moderate vocabulary and standard conversation flow. No translations or brackets.
+5. "summary_advanced": A sophisticated advanced paragraph (5-8 sentences) in ${targetName} using native-level vocabulary and complex clauses. No translations or brackets.
+6. "vocab": An array of exactly 3 key vocabulary words/phrases from the article, as objects: {"word": "word in ${targetName}", "translation": "translation in ${nativeName}"}.
 
-Only output a valid JSON array. Do not wrap in markdown code blocks.`;
+Only output a valid JSON array of 2 objects. Do not wrap in markdown code blocks.`;
 
-    const prompt = `Generate 2 news articles. Target Language: ${targetName}, Learner Level: ${level}, Native Language: ${nativeName}`;
+    const prompt = `Generate 2 news articles. Target Language: ${targetName}, Native Language: ${nativeName}`;
 
     const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'];
     let responseText = '';
@@ -548,7 +615,7 @@ Only output a valid JSON array. Do not wrap in markdown code blocks.`;
 
     for (const modelName of modelsToTry) {
       try {
-        console.log(`[News Gen] Trying model: ${modelName}`);
+        console.log(`[News Gen Cache-Miss] Trying model: ${modelName}`);
         const model = ai.getGenerativeModel({ 
           model: modelName,
           systemInstruction: systemPrompt
@@ -567,7 +634,7 @@ Only output a valid JSON array. Do not wrap in markdown code blocks.`;
         success = true;
         break;
       } catch (err) {
-        console.warn(`[News Gen] Model ${modelName} failed:`, err.message);
+        console.warn(`[News Gen Cache-Miss] Model ${modelName} failed:`, err.message);
         lastError = err;
       }
     }
@@ -576,11 +643,54 @@ Only output a valid JSON array. Do not wrap in markdown code blocks.`;
       throw lastError;
     }
 
-    const data = JSON.parse(responseText);
-    res.json(data);
+    const generatedArticles = JSON.parse(responseText);
+    
+    // Save to database (Write-through cache) and format response for user
+    const responseData = [];
+    
+    if (Array.isArray(generatedArticles)) {
+      for (let i = 0; i < generatedArticles.length; i++) {
+        const art = generatedArticles[i];
+        const dummyUrl = `https://spanglish.app/daily-news/${nativeLanguage}/${Date.now()}/${i}/${Math.random()}`;
+        
+        // Save to Supabase (ignore insert failures to not block response)
+        if (supabase) {
+          try {
+            console.log(`[News Gen Cache-Miss] Caching article: "${art.title}"`);
+            await supabase.from('news_articles').insert({
+              user_id: null,
+              title: art.title,
+              category: art.category || 'Global',
+              summary_basic: art.summary_basic,
+              summary_intermediate: art.summary_intermediate,
+              summary_advanced: art.summary_advanced,
+              vocab: art.vocab || [],
+              submitted_url: dummyUrl
+            });
+          } catch (dbErr) {
+            console.warn('[News Gen Cache-Miss] Failed to save generated article to Supabase:', dbErr.message);
+          }
+        }
+        
+        // Add to response array mapped to requested level
+        responseData.push({
+          id: `gen-${Date.now()}-${i}`,
+          title: art.title,
+          category: art.category || 'Global',
+          summary: level === 'basic' 
+            ? art.summary_basic 
+            : level === 'intermediate' 
+              ? art.summary_intermediate 
+              : art.summary_advanced,
+          vocab: art.vocab || [],
+          submitted_url: dummyUrl
+        });
+      }
+    }
+    
+    res.json(responseData);
   } catch (error) {
-    console.error('Gemini News Error:', error);
-    // Silent fallback if API key errors
+    console.error('Gemini News Gen Cache-Miss Error:', error);
     res.status(500).json({ error: 'Failed to generate news.', details: error.message });
   }
 });
@@ -1492,6 +1602,86 @@ app.post('/api/literature/progress/complete', async (req, res) => {
   } catch (err) {
     console.error('[Progress Complete] Error updating progression:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/welcome-email
+app.post('/api/auth/welcome-email', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required.' });
+  }
+
+  const plunkApiKey = process.env.PLUNK_API_KEY;
+  if (!plunkApiKey) {
+    console.log(`[Email Service Mock] Welcome email requested for ${email}. Plunk API key is not configured.`);
+    return res.json({ success: true, message: 'Plunk key not configured. Welcome email request mocked.' });
+  }
+
+  try {
+    // 1. Subscribe user to contacts list in Plunk CRM (newsletter)
+    console.log(`[Email Service] Subscribing contact in Plunk: ${email}`);
+    await fetch('https://api.useplunk.com/v1/contacts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${plunkApiKey}`
+      },
+      body: JSON.stringify({
+        email: email,
+        subscribed: true
+      })
+    });
+
+    // 2. Send welcome email to user
+    console.log(`[Email Service] Sending welcome email in Plunk to: ${email}`);
+    const emailBody = `
+      <div style="font-family: sans-serif; background: #0b0f19; color: #f1f5f9; padding: 40px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h2 style="font-size: 28px; color: #8b5cf6; margin: 0;">Welcome to Spanglish! 🇪🇸🇺🇸</h2>
+          <p style="font-size: 14px; color: #64748b; margin-top: 4px;">Your intelligent pocket bilingual learning tutor.</p>
+        </div>
+        <div style="background: #111827; padding: 24px; border-radius: 12px; border: 1px solid #374151;">
+          <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin-top: 0;">Hi there,</p>
+          <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1;">Thank you for signing up to Spanglish! We are thrilled to help you on your journey to bilingual fluency.</p>
+          <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1;">Here is what you can do in Spanglish:</p>
+          <ul style="font-size: 14px; color: #94a3b8; line-height: 1.8; padding-left: 20px;">
+            <li>📰 <strong>Daily News</strong>: Read level-adapted news articles customized to your fluency.</li>
+            <li>📖 <strong>Classic Literature</strong>: Challenge yourself with classic novels chapter-by-chapter.</li>
+            <li>💬 <strong>AI Voice Tutor</strong>: Speak directly to our advanced voice tutor to practice pronunciation.</li>
+            <li>✨ <strong>Highlight to Translate</strong>: Instantly translate words or phrases by highlighting them.</li>
+          </ul>
+          <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin-bottom: 0;">Happy learning!</p>
+          <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1;">— The Spanglish Team</p>
+        </div>
+        <div style="text-align: center; margin-top: 24px; font-size: 12px; color: #475569;">
+          <p>You received this email because you registered on Spanglish. You are subscribed to our weekly newsletter.</p>
+          <p>&copy; 2026 Spanglish App. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    const response = await fetch('https://api.useplunk.com/v1/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${plunkApiKey}`
+      },
+      body: JSON.stringify({
+        to: email,
+        subject: 'Welcome to Spanglish! 🇪🇸🇺🇸',
+        body: emailBody
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Plunk send error: ${response.status}`);
+    }
+
+    res.json({ success: true, message: 'Welcome email sent successfully.' });
+  } catch (err) {
+    console.error('[Email Service] Error sending welcome email:', err.message);
+    res.status(500).json({ error: 'Failed to send welcome email.', details: err.message });
   }
 });
 

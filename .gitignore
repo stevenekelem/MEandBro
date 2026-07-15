@@ -29,3 +29,9 @@ dist-ssr
 # PDFs
 *.pdf
 
+# Keystores and APKs
+*.keystore
+*.jks
+*.apk
+*.aab
+*.idsig

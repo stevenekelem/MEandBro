@@ -6,8 +6,9 @@ import { Auth } from './Auth';
 import { 
   Settings, Volume2, Trash2, Search, Sparkles, 
   RotateCcw, Check, X, BookOpen, 
-  GraduationCap, Eye, Cloud, LogOut 
+  GraduationCap, Eye, Cloud, LogOut, Bell
 } from 'lucide-react';
+import { sendTestNotification } from '../utils/notifications';
 
 export const VocabularyModule: React.FC = () => {
   const {
@@ -21,7 +22,11 @@ export const VocabularyModule: React.FC = () => {
     removeWord,
     resetAllData,
     user,
-    authLoading
+    authLoading,
+    notificationsEnabled,
+    setNotificationsEnabled,
+    notificationTimes,
+    setNotificationTimes
   } = useApp();
 
   const [moduleTab, setModuleTab] = useState<'list' | 'flashcards'>('list');
@@ -894,6 +899,178 @@ export const VocabularyModule: React.FC = () => {
                   cursor: 'pointer'
                 }}
               />
+            </div>
+
+            {/* Notification Reminders */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Bell size={12} style={{ color: 'var(--primary)' }} />
+                  {nativeLanguage === 'es' ? 'Recordatorios Diarios' : 'Daily Reminders'}
+                </span>
+                
+                {/* Switch Toggle */}
+                <button
+                  onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+                  style={{
+                    background: notificationsEnabled ? 'var(--primary-gradient)' : 'var(--border)',
+                    border: 'none',
+                    width: '38px',
+                    height: '20px',
+                    borderRadius: '12px',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '50%',
+                      background: 'white',
+                      transform: notificationsEnabled ? 'translateX(18px)' : 'translateX(0px)',
+                      transition: 'all 0.3s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                    }}
+                  />
+                </button>
+              </div>
+
+              {notificationsEnabled && (
+                <div 
+                  className="animate-slide-up"
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '10px', 
+                    background: 'var(--bg-app)', 
+                    padding: '10px', 
+                    borderRadius: '12px',
+                    border: '1px dashed var(--border)' 
+                  }}
+                >
+                  {/* Morning News */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      🌅 {nativeLanguage === 'es' ? 'Noticias de la Mañana' : 'Morning News'}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="time"
+                        value={notificationTimes.morning}
+                        onChange={(e) => setNotificationTimes({ ...notificationTimes, morning: e.target.value })}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--text-primary)',
+                          fontSize: '11px',
+                          padding: '4px 6px',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <button
+                        onClick={() => sendTestNotification('news')}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--primary)',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          padding: '4px 8px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Test
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Midday Lesson */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      💬 {nativeLanguage === 'es' ? 'Lección del Mediodía' : 'Midday Lesson'}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="time"
+                        value={notificationTimes.midday}
+                        onChange={(e) => setNotificationTimes({ ...notificationTimes, midday: e.target.value })}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--text-primary)',
+                          fontSize: '11px',
+                          padding: '4px 6px',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <button
+                        onClick={() => sendTestNotification('chat')}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--primary)',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          padding: '4px 8px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Test
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Evening Lit */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      📖 {nativeLanguage === 'es' ? 'Lectura de la Noche' : 'Evening Literature'}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="time"
+                        value={notificationTimes.evening}
+                        onChange={(e) => setNotificationTimes({ ...notificationTimes, evening: e.target.value })}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--text-primary)',
+                          fontSize: '11px',
+                          padding: '4px 6px',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <button
+                        onClick={() => sendTestNotification('literature')}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--primary)',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          padding: '4px 8px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Test
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Reset progress */}

@@ -18,11 +18,38 @@ interface NewsItem {
   created_at?: string;
 }
 
+// Heuristic to detect translation language of an article to find matching daily/community news
+const matchesNativeLanguageHeuristic = (vocabList: any[], nativeLanguage: 'en' | 'es'): boolean => {
+  if (!vocabList || !Array.isArray(vocabList) || vocabList.length === 0) {
+    return true; // if no vocab, allow it in feed by default
+  }
+  const sampleTranslation = vocabList[0].translation || '';
+  
+  // English words regex
+  const englishWords = /\b(the|of|and|a|to|in|is|you|that|it|he|was|for|on|are|as|with|his|they|i|at|be|this|have|from|or|one|had|by|word|but|not|what|all|were|we|when|your|can|said|there|use|an|each|which|she|do|how|their|if|will|up|other|about|out|many|then|them|these|so|some|her|would|make|like|him|into|time|has|look|two|more|write|go|see|number|no|way|could|people|my|than|first|water|been|call|who|oil|its|now|find|long|down|day|did|get|come|made|may|part)\b/i;
+  
+  // Spanish words regex
+  const spanishWords = /\b(el|la|los|las|un|una|unos|unas|de|del|y|en|que|es|son|se|un|con|por|para|como|su|sus|al|lo|como|más|pero|o|este|esta|estos|estas|ese|esa|esos|esas|aquel|aquella|aquellos|aquellas|mi|mis|tu|tus|su|sus|nuestro|nuestra|nuestros|nuestras|yo|tú|él|ella|nosotros|vosotros|ellos|ellas|me|te|le|nos|os|les|este|esta|todo|todos|toda|todas|otro|otra|otros|otras|mismo|misma|mismos|mismas|alguno|alguna|algunos|algunas|ninguno|ninguna|ningunos|ningunas|mucho|mucha|muchos|muchas|poco|poca|pocos|pocas|tanto|tanta|tantos|tantas|demasiado|demasiada|demasiados|demasiadas|cuyo|cuya|cuyos|cuyas|donde|cuando|como|porque|si|no|sí|bien|mal|muy|mucho|poco|hoy|ayer|mañana|ahora|después|antes|aquí|allí|allá|cerca|lejos|dentro|fuera|arriba|abajo|delante|detrás|encima|debajo)\b/i;
+
+  const textToTest = sampleTranslation.toLowerCase();
+  const hasEnglish = englishWords.test(textToTest);
+  const hasSpanish = spanishWords.test(textToTest);
+
+  if (nativeLanguage === 'en') {
+    // English native speaker: the translation is English
+    return hasEnglish || !hasSpanish;
+  } else {
+    // Spanish native speaker: the translation is Spanish
+    return hasSpanish || !hasEnglish;
+  }
+};
+
 export const NewsModule: React.FC = () => {
   const { nativeLanguage, level, speechRate, saveWord, savedVocabulary, removeWord, user } = useApp();
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   // Submit Form States
   const [showSubmitForm, setShowSubmitForm] = useState(false);
@@ -37,53 +64,88 @@ export const NewsModule: React.FC = () => {
   const fetchNews = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(null);
     
-    try {
-      // 1. Fetch daily news from Express proxy
-      const response = await fetch(getApiUrl('/api/news'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nativeLanguage, level })
-      });
-      const data = await response.json();
+    let baseNews: NewsItem[] = [];
+    let communityNews: NewsItem[] = [];
+    let dailyNewsFailed = false;
+
+    // 1. Fetch daily news from Express proxy with a 6-second timeout
+    const fetchDailyNews = async (): Promise<NewsItem[]> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       
-      let baseNews: NewsItem[] = [];
-      if (Array.isArray(data)) {
-        baseNews = data;
+      try {
+        const response = await fetch(getApiUrl('/api/news'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nativeLanguage, level }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          return data;
+        }
+        return [];
+      } catch (error) {
+        clearTimeout(timeoutId);
+        console.warn('Could not fetch news from proxy. Will fallback to offline data.', error);
+        dailyNewsFailed = true;
+        return [];
       }
+    };
 
-      // 2. Fetch community shared news from Supabase
-      let communityNews: NewsItem[] = [];
-      const { data: dbArticles, error: dbError } = await supabase
-        .from('news_articles')
-        .select('*')
-        .order('created_at', { ascending: false });
+    // 2. Fetch community shared news from Supabase in parallel
+    const fetchCommunityNews = async (): Promise<NewsItem[]> => {
+      try {
+        const { data: dbArticles, error: dbError } = await supabase
+          .from('news_articles')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      if (dbError) {
-        console.warn('Could not load community articles from Supabase:', dbError.message);
-      } else if (dbArticles) {
-        communityNews = dbArticles.map(art => ({
-          id: art.id,
-          title: art.title,
-          category: art.category,
-          // Select correct level summary
-          summary: level === 'basic' 
-            ? art.summary_basic 
-            : level === 'intermediate' 
-              ? art.summary_intermediate 
-              : art.summary_advanced,
-          vocab: Array.isArray(art.vocab) ? art.vocab : [],
-          submitted_url: art.submitted_url || undefined,
-          created_at: art.created_at
-        }));
+        if (dbError) {
+          console.warn('Could not load community articles from Supabase:', dbError.message);
+          return [];
+        }
+
+        if (dbArticles) {
+          // Map and filter articles by language direction
+          return dbArticles
+            .filter(art => matchesNativeLanguageHeuristic(art.vocab, nativeLanguage))
+            .map(art => ({
+              id: art.id,
+              title: art.title,
+              category: art.category,
+              summary: level === 'basic' 
+                ? art.summary_basic 
+                : level === 'intermediate' 
+                  ? art.summary_intermediate 
+                  : art.summary_advanced,
+              vocab: Array.isArray(art.vocab) ? art.vocab : [],
+              submitted_url: art.submitted_url || undefined,
+              created_at: art.created_at
+            }));
+        }
+        return [];
+      } catch (error) {
+        console.warn('Exception fetching community articles:', error);
+        return [];
       }
+    };
 
-      // Combine feed: Community articles first, then baseline articles
-      setNews([...communityNews, ...baseNews]);
+    // Run fetches in parallel
+    const [dailyResult, communityResult] = await Promise.all([
+      fetchDailyNews(),
+      fetchCommunityNews()
+    ]);
 
-    } catch (error) {
-      console.warn('Could not fetch news from proxy. Using local fallback data.', error);
-      // Inline fallback
+    baseNews = dailyResult;
+    communityNews = communityResult;
+
+    if (dailyNewsFailed || baseNews.length === 0) {
+      // Fallback local/offline news if the daily news fetch failed or returned empty
       const fallbackNews = nativeLanguage === 'en'
         ? [
             {
@@ -149,11 +211,19 @@ export const NewsModule: React.FC = () => {
               ]
             }
           ];
-      setNews(fallbackNews);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      baseNews = fallbackNews;
+
+      if (dailyNewsFailed) {
+        setLoadError(nativeLanguage === 'es'
+          ? 'No se pudieron cargar las últimas noticias del servidor. Mostrando noticias locales sin conexión y artículos de la comunidad.'
+          : 'Could not load the latest daily news from server. Showing local offline news and community articles.'
+        );
+      }
     }
+
+    setNews([...communityNews, ...baseNews]);
+    setLoading(false);
+    setRefreshing(false);
   };
 
   useEffect(() => {
@@ -345,6 +415,26 @@ export const NewsModule: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Network / Load Error Banner */}
+      {loadError && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.25)',
+          padding: '12px',
+          borderRadius: '12px',
+          color: '#f87171',
+          fontSize: '13px',
+          fontWeight: '500',
+          lineHeight: '1.4'
+        }}>
+          <span>⚠️</span>
+          <span>{loadError}</span>
+        </div>
+      )}
 
       {/* Share Article form */}
       {showSubmitForm && (

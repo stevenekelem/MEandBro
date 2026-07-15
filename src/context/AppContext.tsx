@@ -44,6 +44,9 @@ interface AppContextType {
   stats: UserStats;
   user: any;
   authLoading: boolean;
+  activeTab: 'news' | 'literature' | 'chat' | 'translate' | 'vocabulary';
+  notificationsEnabled: boolean;
+  notificationTimes: { morning: string; midday: string; evening: string };
   setNativeLanguage: (lang: 'en' | 'es') => void;
   setLevel: (level: 'basic' | 'intermediate' | 'advanced') => void;
   setOnboarded: (val: boolean) => void;
@@ -55,11 +58,25 @@ interface AppContextType {
   addPronunciationAttempt: (score: number) => void;
   incrementWordsTranslated: () => void;
   resetAllData: () => void;
+  setActiveTab: (tab: 'news' | 'literature' | 'chat' | 'translate' | 'vocabulary') => void;
+  setNotificationsEnabled: (val: boolean) => void;
+  setNotificationTimes: (times: { morning: string; midday: string; evening: string }) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [activeTab, setActiveTab] = useState<'news' | 'literature' | 'chat' | 'translate' | 'vocabulary'>('news');
+  
+  const [notificationsEnabled, setNotificationsEnabledState] = useState<boolean>(() => {
+    return localStorage.getItem('spanglish_notifications_enabled') !== 'false';
+  });
+  
+  const [notificationTimes, setNotificationTimesState] = useState<{ morning: string; midday: string; evening: string }>(() => {
+    const saved = localStorage.getItem('spanglish_notification_times');
+    return saved ? JSON.parse(saved) : { morning: '09:00', midday: '13:00', evening: '19:00' };
+  });
+
   // Load preferences from localStorage on mount
   const [nativeLanguage, setNativeLanguageState] = useState<'en' | 'es'>(() => {
     return (localStorage.getItem('spanglish_native_lang') as 'en' | 'es') || 'en';
@@ -275,6 +292,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
       if (session?.user) {
+        setOnboardedState(true);
+        localStorage.setItem('spanglish_onboarded', 'true');
         fetchUserProfile(session.user.id);
       } else {
         setAuthLoading(false);
@@ -287,6 +306,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setUser(currentUser);
       
       if (currentUser) {
+        setOnboardedState(true);
+        localStorage.setItem('spanglish_onboarded', 'true');
         if (event === 'SIGNED_IN') {
           // Sync anonymous progress to profile
           await syncLocalDataToCloud(currentUser.id);
@@ -336,6 +357,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setSpeechRate = (rate: number) => {
     setSpeechRateState(rate);
     localStorage.setItem('spanglish_speech_rate', rate.toString());
+  };
+
+  const setNotificationsEnabled = (val: boolean) => {
+    setNotificationsEnabledState(val);
+    localStorage.setItem('spanglish_notifications_enabled', val ? 'true' : 'false');
+  };
+
+  const setNotificationTimes = (times: { morning: string; midday: string; evening: string }) => {
+    setNotificationTimesState(times);
+    localStorage.setItem('spanglish_notification_times', JSON.stringify(times));
   };
 
   // Chat management
@@ -578,6 +609,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('spanglish_vocabulary');
     localStorage.removeItem('spanglish_speech_rate');
     localStorage.removeItem('spanglish_stats');
+    localStorage.removeItem('spanglish_notifications_enabled');
+    localStorage.removeItem('spanglish_notification_times');
 
     setNativeLanguageState('en');
     setLevelState('basic');
@@ -592,6 +625,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       avgPronunciationScore: 0,
       totalPronunciationScore: 0
     });
+    setNotificationsEnabledState(true);
+    setNotificationTimesState({ morning: '09:00', midday: '13:00', evening: '19:00' });
+    setActiveTab('news');
     setUser(null);
   };
 
@@ -607,6 +643,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       stats,
       user,
       authLoading,
+      activeTab,
+      notificationsEnabled,
+      notificationTimes,
       setNativeLanguage,
       setLevel,
       setOnboarded,
@@ -617,7 +656,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSpeechRate,
       addPronunciationAttempt,
       incrementWordsTranslated,
-      resetAllData
+      resetAllData,
+      setActiveTab,
+      setNotificationsEnabled,
+      setNotificationTimes
     }}>
       {children}
     </AppContext.Provider>

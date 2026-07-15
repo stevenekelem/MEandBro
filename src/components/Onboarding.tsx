@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Globe, ArrowRight, Check, Sparkles } from 'lucide-react';
+import { Auth } from './Auth';
 
 export const Onboarding: React.FC = () => {
   const { nativeLanguage, setNativeLanguage, level, setLevel, setOnboarded } = useApp();
   const [step, setStep] = useState(1);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const handleNext = () => {
     if (step < 3) {
@@ -21,26 +23,74 @@ export const Onboarding: React.FC = () => {
       height: '100%',
       padding: '24px',
       justifyContent: 'space-between',
-      background: 'radial-gradient(circle at top right, hsla(263, 80%, 65%, 0.1) 0%, transparent 60%)'
+      background: 'radial-gradient(circle at top right, hsla(263, 80%, 65%, 0.1) 0%, transparent 60%)',
+      position: 'relative'
     }}>
+      {/* Auth Modal Overlay */}
+      {showAuthModal && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'rgba(5, 6, 8, 0.95)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <Auth 
+            onClose={() => setShowAuthModal(false)}
+            onAuthSuccess={() => {
+              setShowAuthModal(false);
+              setOnboarded(true); // Complete onboarding directly on successful sign in
+            }}
+          />
+        </div>
+      )}
+
       {/* Upper Brand Section */}
-      <div style={{ textAlign: 'center', marginTop: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '10px', marginBottom: '10px' }}>
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: '8px',
           background: 'var(--primary-glow)',
           border: '1px solid var(--border-glow)',
-          padding: '6px 16px',
+          padding: '6px 14px',
           borderRadius: '99px',
           color: 'var(--primary)',
-          fontSize: '13px',
-          fontWeight: '600',
-          marginBottom: '16px'
+          fontSize: '12px',
+          fontWeight: '600'
         }}>
-          <Sparkles size={14} />
+          <Sparkles size={12} />
           <span>Spanglish App</span>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowAuthModal(true)}
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid var(--border)',
+            padding: '6px 14px',
+            borderRadius: '12px',
+            color: 'var(--text-primary)',
+            fontSize: '12px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+          onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+        >
+          {nativeLanguage === 'es' ? 'Iniciar Sesión' : 'Sign In'}
+        </button>
+      </div>
+
+      <div style={{ textAlign: 'center' }}>
         <h1 style={{ fontSize: '32px', fontWeight: '800', lineHeight: '1.1', background: 'var(--primary-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
           {step === 1 ? (nativeLanguage === 'es' ? 'Elige tu Idioma' : 'Choose Language') :
            step === 2 ? (nativeLanguage === 'es' ? 'Tu Nivel de Fluidez' : 'Your Learning Level') :

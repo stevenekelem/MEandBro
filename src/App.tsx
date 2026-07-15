@@ -8,10 +8,18 @@ import { ChatModule } from './components/ChatModule';
 import { VocabularyModule } from './components/VocabularyModule';
 import { TranslatorModule } from './components/TranslatorModule';
 import { Newspaper, BookOpen, MessageSquare, Volume2, Languages, X, GraduationCap } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { scheduleAllReminders } from './utils/notifications';
 
 const App: React.FC = () => {
-  const { onboarded, nativeLanguage } = useApp();
-  const [activeTab, setActiveTab] = useState<'news' | 'literature' | 'chat' | 'translate' | 'vocabulary'>('news');
+  const { 
+    onboarded, 
+    nativeLanguage, 
+    activeTab, 
+    setActiveTab, 
+    notificationsEnabled, 
+    notificationTimes 
+  } = useApp();
   const [currentTime, setCurrentTime] = useState('');
 
   // Floating selection translation hook
@@ -32,6 +40,46 @@ const App: React.FC = () => {
   useEffect(() => {
     closeBubble();
   }, [activeTab, closeBubble]);
+
+  // Schedule native notifications when enabled state or times change
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      scheduleAllReminders(notificationsEnabled, notificationTimes);
+    }
+  }, [notificationsEnabled, notificationTimes]);
+
+  // Listen for local notification actions
+  useEffect(() => {
+    let listenerHandle: any = null;
+
+    if (Capacitor.isNativePlatform()) {
+      const initListener = async () => {
+        try {
+          const { LocalNotifications } = await import('@capacitor/local-notifications');
+          listenerHandle = await LocalNotifications.addListener(
+            'localNotificationActionPerformed',
+            (action) => {
+              console.log('Notification action performed:', action);
+              const targetTab = action.notification.extra?.tab;
+              if (targetTab) {
+                setActiveTab(targetTab);
+              }
+            }
+          );
+        } catch (err) {
+          console.error('Error setting up notification listener:', err);
+        }
+      };
+
+      initListener();
+    }
+
+    return () => {
+      if (listenerHandle) {
+        listenerHandle.remove();
+      }
+    };
+  }, [setActiveTab]);
 
   return (
     <div className="desktop-wrapper">

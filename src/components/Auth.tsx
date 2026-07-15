@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
+import { getApiUrl } from '../utils/api';
 import { Mail, Lock, UserPlus, LogIn, AlertCircle, CheckCircle2, X } from 'lucide-react';
 
 interface AuthProps {
@@ -9,6 +10,7 @@ interface AuthProps {
 
 export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isResetPassword, setIsResetPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,19 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
 
         if (error) throw error;
 
+        // Trigger welcome email on the Express backend (runs asynchronously)
+        if (data.user) {
+          try {
+            fetch(getApiUrl('/api/auth/welcome-email'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: email.trim() })
+            });
+          } catch (mailErr) {
+            console.warn('Failed to send welcome email trigger:', mailErr);
+          }
+        }
+
         // If email confirmation is required, tell them. Otherwise, they might be logged in directly.
         if (data.user && data.session === null) {
           setSuccessMsg('Account created! Please check your inbox for a confirmation email.');
@@ -65,6 +80,34 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
       setLoading(false);
     }
   };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setErrorMsg('Please enter your email address.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
+
+      if (error) throw error;
+
+      setSuccessMsg('Password reset link sent! Check your inbox.');
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      setErrorMsg(err.message || 'Failed to send password reset email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   return (
     <div style={{
@@ -105,59 +148,17 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
       )}
 
       {/* Title */}
-      <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+      <div style={{ textAlign: 'center', marginBottom: '4px' }}>
         <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white' }}>
-          {isSignUp ? 'Create Account' : 'Welcome Back'}
+          {isResetPassword ? 'Reset Password' : isSignUp ? 'Create Account' : 'Welcome Back'}
         </h3>
         <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-          {isSignUp ? 'Sign up to sync your dictionary and stats' : 'Log in to access your cloud profile'}
+          {isResetPassword 
+            ? 'Enter your email to receive a password reset link' 
+            : isSignUp 
+              ? 'Sign up to sync your dictionary and stats' 
+              : 'Log in to access your cloud profile'}
         </p>
-      </div>
-
-      {/* Tabs */}
-      <div style={{
-        display: 'flex',
-        background: 'rgba(0,0,0,0.25)',
-        padding: '3px',
-        borderRadius: '10px',
-        border: '1px solid var(--border)'
-      }}>
-        <button
-          type="button"
-          onClick={() => { setIsSignUp(false); setErrorMsg(null); setSuccessMsg(null); }}
-          style={{
-            flex: 1,
-            background: !isSignUp ? 'var(--primary-gradient)' : 'transparent',
-            border: 'none',
-            color: 'white',
-            fontWeight: '600',
-            fontSize: '12px',
-            padding: '6px',
-            borderRadius: '7px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          Login
-        </button>
-        <button
-          type="button"
-          onClick={() => { setIsSignUp(true); setErrorMsg(null); setSuccessMsg(null); }}
-          style={{
-            flex: 1,
-            background: isSignUp ? 'var(--primary-gradient)' : 'transparent',
-            border: 'none',
-            color: 'white',
-            fontWeight: '600',
-            fontSize: '12px',
-            padding: '6px',
-            borderRadius: '7px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          Sign Up
-        </button>
       </div>
 
       {/* Alerts */}
@@ -197,97 +198,241 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
         </div>
       )}
 
-      {/* Form */}
-      <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
-            Email Address
-          </label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Mail size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-              required
-              style={{
-                width: '100%',
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '10px 10px 10px 34px',
-                color: 'white',
-                fontSize: '12.5px',
-                outline: 'none'
-              }}
-            />
+      {isResetPassword ? (
+        /* Password Reset Form */
+        <form onSubmit={handlePasswordReset} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+              Email Address
+            </label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Mail size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                required
+                style={{
+                  width: '100%',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '10px 10px 10px 34px',
+                  color: 'white',
+                  fontSize: '12.5px',
+                  outline: 'none'
+                }}
+              />
+            </div>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
-            Password
-          </label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Lock size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              minLength={6}
-              style={{
-                width: '100%',
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '10px 10px 10px 34px',
-                color: 'white',
-                fontSize: '12.5px',
-                outline: 'none'
-              }}
-            />
-          </div>
-        </div>
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              background: 'var(--primary-gradient)',
+              border: 'none',
+              color: 'white',
+              padding: '12px',
+              borderRadius: '12px',
+              fontWeight: '700',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              marginTop: '6px',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 8px 16px rgba(124, 58, 237, 0.2)'
+            }}
+          >
+            {loading ? (
+              <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'voicePulse 0.5s infinite' }}></div>
+            ) : (
+              <span>Send Reset Link</span>
+            )}
+          </button>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            background: 'var(--primary-gradient)',
-            border: 'none',
-            color: 'white',
-            padding: '12px',
-            borderRadius: '12px',
-            fontWeight: '700',
-            fontSize: '13px',
-            cursor: 'pointer',
+          <button
+            type="button"
+            onClick={() => { setIsResetPassword(false); setErrorMsg(null); setSuccessMsg(null); }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--primary)',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              marginTop: '4px',
+              textAlign: 'center'
+            }}
+          >
+            Back to Login
+          </button>
+        </form>
+      ) : (
+        /* Regular Login / Sign Up Form */
+        <>
+          {/* Tabs */}
+          <div style={{
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            marginTop: '6px',
-            transition: 'all 0.2s ease',
-            boxShadow: '0 8px 16px rgba(124, 58, 237, 0.2)'
-          }}
-        >
-          {loading ? (
-            <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'voicePulse 0.5s infinite' }}></div>
-          ) : isSignUp ? (
-            <>
-              <UserPlus size={14} />
-              <span>Create Account</span>
-            </>
-          ) : (
-            <>
-              <LogIn size={14} />
-              <span>Log In</span>
-            </>
-          )}
-        </button>
-      </form>
+            background: 'rgba(0,0,0,0.25)',
+            padding: '3px',
+            borderRadius: '10px',
+            border: '1px solid var(--border)'
+          }}>
+            <button
+              type="button"
+              onClick={() => { setIsSignUp(false); setErrorMsg(null); setSuccessMsg(null); }}
+              style={{
+                flex: 1,
+                background: !isSignUp ? 'var(--primary-gradient)' : 'transparent',
+                border: 'none',
+                color: 'white',
+                fontWeight: '600',
+                fontSize: '12px',
+                padding: '6px',
+                borderRadius: '7px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              Login
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsSignUp(true); setErrorMsg(null); setSuccessMsg(null); }}
+              style={{
+                flex: 1,
+                background: isSignUp ? 'var(--primary-gradient)' : 'transparent',
+                border: 'none',
+                color: 'white',
+                fontWeight: '600',
+                fontSize: '12px',
+                padding: '6px',
+                borderRadius: '7px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+                Email Address
+              </label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <Mail size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  required
+                  style={{
+                    width: '100%',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '10px 10px 10px 34px',
+                    color: 'white',
+                    fontSize: '12.5px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+                  Password
+                </label>
+                {!isSignUp && (
+                  <button
+                    type="button"
+                    onClick={() => { setIsResetPassword(true); setErrorMsg(null); setSuccessMsg(null); }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--primary)',
+                      fontSize: '10px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                  >
+                    Forgot?
+                  </button>
+                )}
+              </div>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <Lock size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  style={{
+                    width: '100%',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '10px 10px 10px 34px',
+                    color: 'white',
+                    fontSize: '12.5px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: 'var(--primary-gradient)',
+                border: 'none',
+                color: 'white',
+                padding: '12px',
+                borderRadius: '12px',
+                fontWeight: '700',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                marginTop: '6px',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 8px 16px rgba(124, 58, 237, 0.2)'
+              }}
+            >
+              {loading ? (
+                <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'voicePulse 0.5s infinite' }}></div>
+              ) : isSignUp ? (
+                <>
+                  <UserPlus size={14} />
+                  <span>Create Account</span>
+                </>
+              ) : (
+                <>
+                  <LogIn size={14} />
+                  <span>Log In</span>
+                </>
+              )}
+            </button>
+          </form>
+
+        </>
+      )}
     </div>
   );
 };
