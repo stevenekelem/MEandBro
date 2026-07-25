@@ -312,8 +312,8 @@ const LOCAL_FALLBACK_CHAPTERS: Record<string, ChapterType[]> = {
 };
 
 export const LiteratureModule: React.FC = () => {
-  const { nativeLanguage, speechRate, setSpeechRate, level, user } = useApp();
-  
+  const { nativeLanguage, speechRate, setSpeechRate, level, user, recordActivity } = useApp();
+
   // Navigation states: 'books' | 'chapters' | 'reader'
   const [currentView, setCurrentView] = useState<'books' | 'chapters' | 'reader'>('books');
   const [books, setBooks] = useState<BookType[]>([]);
@@ -358,18 +358,78 @@ export const LiteratureModule: React.FC = () => {
     fetchBooks();
   }, [targetLang]);
 
+  // Restore persistent reading state when books load
+  useEffect(() => {
+    if (books.length === 0) return;
+    try {
+      const savedState = localStorage.getItem('spanglish_literature_last_state');
+      if (savedState) {
+        const parsed = JSON.parse(savedState);
+        if (parsed.bookId) {
+          const matchedBook = books.find(b => b.id === parsed.bookId);
+          if (matchedBook) {
+            handleSelectBook(matchedBook).then(() => {
+              if (parsed.view === 'reader' && parsed.chapterId) {
+                const bookChaps = LOCAL_FALLBACK_CHAPTERS[parsed.bookId] || [];
+                const matchedChap = bookChaps.find(c => c.id === parsed.chapterId || c.chapter_number === parsed.chapterNumber);
+                if (matchedChap) {
+                  setSelectedChapter(matchedChap);
+                  setCurrentView('reader');
+                }
+              } else if (parsed.view === 'chapters') {
+                setCurrentView('chapters');
+              }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore literature reading state:', e);
+    }
+  }, [books]);
+
+  // Helper to persist reading state
+  const persistState = (view: 'books' | 'chapters' | 'reader', book: BookType | null, chapter: ChapterType | null) => {
+    try {
+      localStorage.setItem('spanglish_literature_last_state', JSON.stringify({
+        view,
+        bookId: book ? book.id : null,
+        chapterId: chapter ? chapter.id : null,
+        chapterNumber: chapter ? chapter.chapter_number : null
+      }));
+    } catch (e) {}
+  };
+
   // Fetch chapters and progress when a book is selected
   const handleSelectBook = async (book: BookType) => {
     setSelectedBook(book);
     setLoading(true);
     setCurrentView('chapters');
+    persistState('chapters', book, null);
 
     try {
       // 1. Fetch chapters
       const chapRes = await fetch(getApiUrl(`/api/literature/book/${book.id}/chapters`));
-      if (!chapRes.ok) throw new Error('Failed to fetch chapters');
-      const chapData = await chapRes.json();
+      let chapData: ChapterType[] = [];
+      if (chapRes.ok) {
+        chapData = await chapRes.json();
+      } else {
+        chapData = LOCAL_FALLBACK_CHAPTERS[book.id] || [];
+      }
       setChapters(chapData);
+
+      // Check if we need to restore selected chapter
+      const savedState = localStorage.getItem('spanglish_literature_last_state');
+      if (savedState) {
+        const parsed = JSON.parse(savedState);
+        if (parsed.view === 'reader' && parsed.chapterId) {
+          const matchedChap = chapData.find(c => c.id === parsed.chapterId || c.chapter_number === parsed.chapterNumber);
+          if (matchedChap) {
+            setSelectedChapter(matchedChap);
+            setCurrentView('reader');
+          }
+        }
+      }
 
       // 2. Fetch progress
       const userIdParam = user ? `?userId=${user.id}` : '';
@@ -381,7 +441,6 @@ export const LiteratureModule: React.FC = () => {
           current_chapter: progData.current_chapter || 1
         });
       } else {
-        // LocalStorage fallback for progress if not logged in or server fails
         const localProg = localStorage.getItem(`spanglish_progress_${book.id}`);
         if (localProg) {
           setProgress(JSON.parse(localProg));
@@ -391,7 +450,8 @@ export const LiteratureModule: React.FC = () => {
       }
     } catch (err) {
       console.warn('Using offline fallback chapters & progress:', err);
-      setChapters(LOCAL_FALLBACK_CHAPTERS[book.id] || []);
+      const fallbackChaps = LOCAL_FALLBACK_CHAPTERS[book.id] || [];
+      setChapters(fallbackChaps);
       
       const localProg = localStorage.getItem(`spanglish_progress_${book.id}`);
       if (localProg) {
@@ -409,6 +469,7 @@ export const LiteratureModule: React.FC = () => {
     if (chapter.chapter_number > progress.current_chapter) return;
     setSelectedChapter(chapter);
     setCurrentView('reader');
+    persistState('reader', selectedBook, chapter);
   };
 
   const handleCompleteChapter = async () => {
@@ -416,6 +477,10 @@ export const LiteratureModule: React.FC = () => {
     setCompleting(true);
 
     const chNum = selectedChapter.chapter_number;
+    
+    // Award book chapter activity score (+25 XP)
+    recordActivity('chapter');
+
     try {
       const response = await fetch(getApiUrl('/api/literature/progress/complete'), {
         method: 'POST',

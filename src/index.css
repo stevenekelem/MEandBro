@@ -383,3 +383,9 @@ h1, h2, h3, h4 {
 .pulse-recording {
   animation: voicePulse 1.5s infinite;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+

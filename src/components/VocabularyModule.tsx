@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import type { VocabWord } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
@@ -26,7 +26,8 @@ export const VocabularyModule: React.FC = () => {
     notificationsEnabled,
     setNotificationsEnabled,
     notificationTimes,
-    setNotificationTimes
+    setNotificationTimes,
+    recordActivity
   } = useApp();
 
   const [moduleTab, setModuleTab] = useState<'list' | 'flashcards'>('list');
@@ -42,6 +43,7 @@ export const VocabularyModule: React.FC = () => {
   const [cardIndex, setCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [sessionResults, setSessionResults] = useState<{ correct: number; incorrect: number }>({ correct: 0, incorrect: 0 });
+  const [shuffleTrigger, setShuffleTrigger] = useState(0);
 
   const speakVocab = (e: React.MouseEvent, word: string) => {
     e.stopPropagation(); // Prevent card toggle expansion
@@ -96,9 +98,16 @@ export const VocabularyModule: React.FC = () => {
   const flashcardDeck = useMemo(() => {
     // Shuffled subset of current filtered vocabulary
     return [...filteredVocabulary].sort(() => 0.5 - Math.random());
-  }, [filteredVocabulary, cardIndex === 0 && !isFlipped]); // reshuffle only when resetting/first load
+  }, [filteredVocabulary, shuffleTrigger]);
 
-  const activeCard = flashcardDeck[cardIndex];
+  const activeCard = flashcardDeck[cardIndex] || flashcardDeck[0];
+
+  // Bounds checker to prevent out-of-bounds index on filter changes
+  useEffect(() => {
+    if (cardIndex >= flashcardDeck.length) {
+      setCardIndex(0);
+    }
+  }, [flashcardDeck, cardIndex]);
 
   const handleFlashcardAnswer = (correct: boolean) => {
     setIsFlipped(false);
@@ -108,6 +117,9 @@ export const VocabularyModule: React.FC = () => {
       setSessionResults(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
     }
     
+    // Award flashcard activity score (+20 XP)
+    recordActivity('flashcard');
+
     // Animate transition delay
     setTimeout(() => {
       if (cardIndex < flashcardDeck.length - 1) {
@@ -115,6 +127,8 @@ export const VocabularyModule: React.FC = () => {
       } else {
         // Wrap around or show end session
         setCardIndex(0);
+        // Reshuffle for next round
+        setShuffleTrigger(prev => prev + 1);
       }
     }, 200);
   };
@@ -123,6 +137,7 @@ export const VocabularyModule: React.FC = () => {
     setCardIndex(0);
     setIsFlipped(false);
     setSessionResults({ correct: 0, incorrect: 0 });
+    setShuffleTrigger(prev => prev + 1);
   };
 
   const getVerbConjugations = (conjugations: any) => {
@@ -531,25 +546,20 @@ export const VocabularyModule: React.FC = () => {
                 {/* Flippable card */}
                 <div 
                   onClick={() => setIsFlipped(!isFlipped)}
-                  className="glass-card"
                   style={{
-                    height: '240px',
+                    height: '250px',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    padding: '24px',
-                    textAlign: 'center',
                     cursor: 'pointer',
                     position: 'relative',
-                    transition: 'transform 0.4s ease, border-color 0.2s ease',
+                    transition: 'transform 0.4s ease',
                     transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                    border: '1px solid rgba(139, 92, 246, 0.25)',
-                    boxShadow: '0 8px 32px rgba(15, 12, 41, 0.1)',
                     transformStyle: 'preserve-3d'
                   }}
                 >
-                  {/* Front Side */}
+                  {/* Front Side (Indigo / Question Shade) */}
                   <div style={{
                     position: 'absolute',
                     backfaceVisibility: 'hidden',
@@ -559,32 +569,57 @@ export const VocabularyModule: React.FC = () => {
                     alignItems: 'center',
                     height: '100%',
                     width: '100%',
-                    padding: '20px',
-                    gap: '12px'
+                    padding: '24px',
+                    gap: '10px',
+                    background: 'linear-gradient(145deg, rgba(30, 27, 75, 0.95), rgba(67, 56, 202, 0.45))',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(139, 92, 246, 0.45)',
+                    borderRadius: '20px',
+                    boxShadow: '0 12px 32px rgba(15, 12, 41, 0.4)'
                   }}>
+                    <span style={{
+                      position: 'absolute',
+                      top: '12px',
+                      left: '14px',
+                      fontSize: '9px',
+                      fontWeight: '800',
+                      letterSpacing: '0.8px',
+                      textTransform: 'uppercase',
+                      color: '#a78bfa',
+                      background: 'rgba(139, 92, 246, 0.2)',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(139, 92, 246, 0.3)'
+                    }}>
+                      {nativeLanguage === 'es' ? 'Frente • Pregunta' : 'Front • Question'}
+                    </span>
+
                     <button 
                       onClick={(e) => speakVocab(e, activeCard.word)}
                       className="icon-button"
                       style={{
-                        background: 'var(--bg-app)',
-                        border: 'none',
-                        color: 'var(--primary)',
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        color: '#c084fc',
                         padding: '8px',
                         borderRadius: '50%',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        marginTop: '10px'
                       }}
                     >
                       <Volume2 size={16} />
                     </button>
-                    <div style={{ fontSize: '26px', fontWeight: '900', color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
+                    
+                    <div style={{ fontSize: '26px', fontWeight: '900', color: 'white', letterSpacing: '-0.5px' }}>
                       {activeCard.word}
                     </div>
+
                     {activeCard.partOfSpeech && (
                       <span style={{
                         fontSize: '9px',
                         textTransform: 'uppercase',
-                        background: 'rgba(139, 92, 246, 0.15)',
-                        color: '#a78bfa',
+                        background: 'rgba(139, 92, 246, 0.25)',
+                        color: '#ddd6fe',
                         padding: '3px 8px',
                         borderRadius: '6px',
                         fontWeight: '700'
@@ -592,13 +627,14 @@ export const VocabularyModule: React.FC = () => {
                         {activeCard.partOfSpeech}
                       </span>
                     )}
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Eye size={12} />
-                      <span>{nativeLanguage === 'es' ? 'Toca para revelar traducción' : 'Tap to reveal translation'}</span>
+                      <span>{nativeLanguage === 'es' ? 'Toca para ver respuesta' : 'Tap to reveal answer'}</span>
                     </div>
                   </div>
 
-                  {/* Back Side */}
+                  {/* Back Side (Emerald / Answer Shade) */}
                   <div style={{
                     position: 'absolute',
                     backfaceVisibility: 'hidden',
@@ -609,24 +645,46 @@ export const VocabularyModule: React.FC = () => {
                     alignItems: 'center',
                     height: '100%',
                     width: '100%',
-                    padding: '20px',
-                    gap: '8px'
+                    padding: '24px',
+                    gap: '8px',
+                    background: 'linear-gradient(145deg, rgba(6, 78, 59, 0.95), rgba(15, 23, 42, 0.95))',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(16, 185, 129, 0.45)',
+                    borderRadius: '20px',
+                    boxShadow: '0 12px 32px rgba(6, 78, 59, 0.3)'
                   }}>
-                    <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--primary)', textTransform: 'uppercase' }}>
+                    <span style={{
+                      position: 'absolute',
+                      top: '12px',
+                      left: '14px',
+                      fontSize: '9px',
+                      fontWeight: '800',
+                      letterSpacing: '0.8px',
+                      textTransform: 'uppercase',
+                      color: '#34d399',
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(16, 185, 129, 0.3)'
+                    }}>
+                      {nativeLanguage === 'es' ? 'Reverso • Respuesta' : 'Back • Answer'}
+                    </span>
+
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#34d399', textTransform: 'uppercase', marginTop: '10px' }}>
                       {nativeLanguage === 'es' ? 'Traducción' : 'Translation'}
                     </div>
-                    <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-primary)' }}>
+                    <div style={{ fontSize: '24px', fontWeight: '900', color: '#ecfdf5' }}>
                       {activeCard.translation}
                     </div>
                     
                     {activeCard.definition && (
-                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '90%', margin: '4px 0', lineHeight: '1.3' }}>
+                      <p style={{ fontSize: '11px', color: '#a7f3d0', maxWidth: '90%', margin: '4px 0', lineHeight: '1.3' }}>
                         {activeCard.definition}
                       </p>
                     )}
 
                     {activeCard.exampleSentence && (
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '6px' }}>
+                      <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontStyle: 'italic', marginTop: '4px' }}>
                         "{activeCard.exampleSentence}"
                       </div>
                     )}

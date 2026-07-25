@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
 import { getApiUrl } from '../utils/api';
-import { Mail, Lock, UserPlus, LogIn, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { Mail, Lock, UserPlus, LogIn, AlertCircle, CheckCircle2, X, Eye, EyeOff, KeyRound, Smartphone } from 'lucide-react';
 
 interface AuthProps {
   onClose?: () => void;
@@ -9,10 +10,14 @@ interface AuthProps {
 }
 
 export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
+  const { isPasswordRecovery, setIsPasswordRecovery } = useApp();
+  
   const [isSignUp, setIsSignUp] = useState(false);
   const [isResetPassword, setIsResetPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -42,7 +47,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
 
         if (error) throw error;
 
-        // Trigger welcome email on the Express backend (runs asynchronously)
+        // Trigger welcome email on the Express backend
         if (data.user) {
           try {
             fetch(getApiUrl('/api/auth/welcome-email'), {
@@ -55,7 +60,6 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
           }
         }
 
-        // If email confirmation is required, tell them. Otherwise, they might be logged in directly.
         if (data.user && data.session === null) {
           setSuccessMsg('Account created! Please check your inbox for a confirmation email.');
         } else {
@@ -93,13 +97,15 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
     setSuccessMsg(null);
 
     try {
+      // Use clean origin for reset redirect link
+      const redirectUrl = window.location.origin;
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`
+        redirectTo: redirectUrl
       });
 
       if (error) throw error;
 
-      setSuccessMsg('Password reset link sent! Check your inbox.');
+      setSuccessMsg('Password reset email sent! Open the link on your phone to launch the app and set your new password.');
     } catch (err: any) {
       console.error('Password reset error:', err);
       setErrorMsg(err.message || 'Failed to send password reset email.');
@@ -108,6 +114,38 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
     }
   };
 
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password.trim() || password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg('Passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password
+      });
+
+      if (error) throw error;
+
+      setSuccessMsg('Password updated successfully! You are now logged in.');
+      setIsPasswordRecovery(false);
+      if (onAuthSuccess) setTimeout(onAuthSuccess, 1200);
+    } catch (err: any) {
+      console.error('Update password error:', err);
+      setErrorMsg(err.message || 'Failed to update password. Please request a new reset link.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{
@@ -150,14 +188,22 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
       {/* Title */}
       <div style={{ textAlign: 'center', marginBottom: '4px' }}>
         <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white' }}>
-          {isResetPassword ? 'Reset Password' : isSignUp ? 'Create Account' : 'Welcome Back'}
+          {isPasswordRecovery 
+            ? 'Set New Password' 
+            : isResetPassword 
+              ? 'Reset Password' 
+              : isSignUp 
+                ? 'Create Account' 
+                : 'Welcome Back'}
         </h3>
         <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-          {isResetPassword 
-            ? 'Enter your email to receive a password reset link' 
-            : isSignUp 
-              ? 'Sign up to sync your dictionary and stats' 
-              : 'Log in to access your cloud profile'}
+          {isPasswordRecovery
+            ? 'Type your new account password below'
+            : isResetPassword 
+              ? 'Enter your email to receive a password reset link' 
+              : isSignUp 
+                ? 'Sign up to sync your dictionary and stats' 
+                : 'Log in to access your cloud profile'}
         </p>
       </div>
 
@@ -198,7 +244,131 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
         </div>
       )}
 
-      {isResetPassword ? (
+      {isPasswordRecovery ? (
+        /* Password Recovery Update Form */
+        <form onSubmit={handleUpdatePassword} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* New Password Input */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+              New Password
+            </label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Lock size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+                style={{
+                  width: '100%',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '10px 38px 10px 34px',
+                  color: 'white',
+                  fontSize: '12.5px',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Confirm New Password Input */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+              Confirm New Password
+            </label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Lock size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+                style={{
+                  width: '100%',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '10px 38px 10px 34px',
+                  color: 'white',
+                  fontSize: '12.5px',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              background: 'var(--primary-gradient)',
+              border: 'none',
+              color: 'white',
+              padding: '12px',
+              borderRadius: '12px',
+              fontWeight: '700',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              marginTop: '6px',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 8px 16px rgba(124, 58, 237, 0.2)'
+            }}
+          >
+            {loading ? (
+              <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'voicePulse 0.5s infinite' }}></div>
+            ) : (
+              <>
+                <KeyRound size={14} />
+                <span>Save New Password</span>
+              </>
+            )}
+          </button>
+        </form>
+      ) : isResetPassword ? (
         /* Password Reset Form */
         <form onSubmit={handlePasswordReset} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -225,6 +395,21 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
                 }}
               />
             </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'rgba(56, 189, 248, 0.1)',
+            border: '1px solid rgba(56, 189, 248, 0.2)',
+            padding: '8px 10px',
+            borderRadius: '8px',
+            fontSize: '11px',
+            color: '#38bdf8'
+          }}>
+            <Smartphone size={14} style={{ flexShrink: 0 }} />
+            <span>Note: Open the reset email link on your mobile phone to launch the app directly.</span>
           </div>
 
           <button
@@ -374,7 +559,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <Lock size={14} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -385,12 +570,29 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
                     background: 'var(--surface)',
                     border: '1px solid var(--border)',
                     borderRadius: '10px',
-                    padding: '10px 10px 10px 34px',
+                    padding: '10px 38px 10px 34px',
                     color: 'white',
                     fontSize: '12.5px',
                     outline: 'none'
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
               </div>
             </div>
 

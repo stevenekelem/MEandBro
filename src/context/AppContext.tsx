@@ -24,13 +24,24 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-// Stats counter structure
+// Stats counter & Gamification structure
 export interface UserStats {
   wordsTranslated: number;
   chatSessions: number;
   pronunciationAttempts: number;
   avgPronunciationScore: number;
   totalPronunciationScore: number; // to calculate running average
+  // Gamification fields
+  totalScore: number;
+  dailyPoints: number;
+  dailyGoal: number;
+  streakCount: number;
+  lastActiveDate: string; // YYYY-MM-DD
+  flashcardsDailyPoints: number;
+  articlesCompleted: number;
+  chaptersCompleted: number;
+  tutorLessonsCompleted: number;
+  flashcardsCompleted: number;
 }
 
 interface AppContextType {
@@ -44,9 +55,11 @@ interface AppContextType {
   stats: UserStats;
   user: any;
   authLoading: boolean;
-  activeTab: 'news' | 'literature' | 'chat' | 'translate' | 'vocabulary';
+  activeTab: 'news' | 'literature' | 'chat' | 'vocabulary';
   notificationsEnabled: boolean;
   notificationTimes: { morning: string; midday: string; evening: string };
+  isPasswordRecovery: boolean;
+  setIsPasswordRecovery: (val: boolean) => void;
   setNativeLanguage: (lang: 'en' | 'es') => void;
   setLevel: (level: 'basic' | 'intermediate' | 'advanced') => void;
   setOnboarded: (val: boolean) => void;
@@ -57,16 +70,35 @@ interface AppContextType {
   setSpeechRate: (rate: number) => void;
   addPronunciationAttempt: (score: number) => void;
   incrementWordsTranslated: () => void;
+  recordActivity: (type: 'article' | 'chapter' | 'tutor' | 'flashcard', customPoints?: number) => void;
   resetAllData: () => void;
-  setActiveTab: (tab: 'news' | 'literature' | 'chat' | 'translate' | 'vocabulary') => void;
+  setActiveTab: (tab: 'news' | 'literature' | 'chat' | 'vocabulary') => void;
   setNotificationsEnabled: (val: boolean) => void;
   setNotificationTimes: (times: { morning: string; midday: string; evening: string }) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Date helpers for daily activity & streak tracking
+const getTodayDateString = (): string => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getYesterdayDateString = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<'news' | 'literature' | 'chat' | 'translate' | 'vocabulary'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'literature' | 'chat' | 'vocabulary'>('news');
   
   const [notificationsEnabled, setNotificationsEnabledState] = useState<boolean>(() => {
     return localStorage.getItem('spanglish_notifications_enabled') !== 'false';
@@ -107,13 +139,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [stats, setStats] = useState<UserStats>(() => {
     const data = localStorage.getItem('spanglish_stats');
-    return data ? JSON.parse(data) : {
-      wordsTranslated: 0,
-      chatSessions: 0,
-      pronunciationAttempts: 0,
-      avgPronunciationScore: 0,
-      totalPronunciationScore: 0
+    const parsed = data ? JSON.parse(data) : {};
+    const today = getTodayDateString();
+    const yesterday = getYesterdayDateString();
+
+    let dailyPoints = parsed.dailyPoints || 0;
+    let flashcardsDailyPoints = parsed.flashcardsDailyPoints || 0;
+    let streakCount = parsed.streakCount || 0;
+    const lastActiveDate = parsed.lastActiveDate || '';
+
+    if (lastActiveDate && lastActiveDate !== today) {
+      dailyPoints = 0; // reset today's points
+      flashcardsDailyPoints = 0; // reset flashcard daily points
+      if (lastActiveDate !== yesterday) {
+        streakCount = 0; // broken streak
+      }
+    }
+
+    return {
+      wordsTranslated: parsed.wordsTranslated || 0,
+      chatSessions: parsed.chatSessions || 0,
+      pronunciationAttempts: parsed.pronunciationAttempts || 0,
+      avgPronunciationScore: parsed.avgPronunciationScore || 0,
+      totalPronunciationScore: parsed.totalPronunciationScore || 0,
+      totalScore: parsed.totalScore || 0,
+      dailyPoints: dailyPoints,
+      dailyGoal: parsed.dailyGoal || 50,
+      streakCount: streakCount,
+      lastActiveDate: lastActiveDate,
+      flashcardsDailyPoints: flashcardsDailyPoints,
+      articlesCompleted: parsed.articlesCompleted || 0,
+      chaptersCompleted: parsed.chaptersCompleted || 0,
+      tutorLessonsCompleted: parsed.tutorLessonsCompleted || 0,
+      flashcardsCompleted: parsed.flashcardsCompleted || 0
     };
+  });
+
+  // Password Recovery state
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      return hash.includes('type=recovery') || search.includes('type=recovery');
+    }
+    return false;
   });
 
   // Auth states
@@ -145,15 +214,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setLevelState(profile.level);
           localStorage.setItem('spanglish_level', profile.level);
         }
-        const dbStats = {
-          wordsTranslated: profile.words_translated || 0,
-          chatSessions: profile.chat_sessions || 0,
-          pronunciationAttempts: profile.pronunciation_attempts || 0,
-          avgPronunciationScore: profile.avg_pronunciation_score || 0,
-          totalPronunciationScore: profile.total_pronunciation_score || 0
-        };
-        setStats(dbStats);
-        localStorage.setItem('spanglish_stats', JSON.stringify(dbStats));
+        const today = getTodayDateString();
+        setStats(prev => {
+          const mergedStats: UserStats = {
+            wordsTranslated: Math.max(prev.wordsTranslated || 0, profile.words_translated || 0),
+            chatSessions: Math.max(prev.chatSessions || 0, profile.chat_sessions || 0),
+            pronunciationAttempts: Math.max(prev.pronunciationAttempts || 0, profile.pronunciation_attempts || 0),
+            avgPronunciationScore: profile.avg_pronunciation_score || prev.avgPronunciationScore || 0,
+            totalPronunciationScore: Math.max(prev.totalPronunciationScore || 0, profile.total_pronunciation_score || 0),
+            totalScore: Math.max(prev.totalScore || 0, profile.total_score || 0),
+            dailyPoints: (profile.last_active_date === today || prev.lastActiveDate === today)
+              ? Math.max(prev.dailyPoints || 0, profile.daily_points || 0)
+              : 0,
+            dailyGoal: prev.dailyGoal || 50,
+            streakCount: Math.max(prev.streakCount || 0, profile.streak_count || 0),
+            lastActiveDate: profile.last_active_date || prev.lastActiveDate || today,
+            flashcardsDailyPoints: prev.flashcardsDailyPoints || 0,
+            articlesCompleted: prev.articlesCompleted || 0,
+            chaptersCompleted: prev.chaptersCompleted || 0,
+            tutorLessonsCompleted: prev.tutorLessonsCompleted || 0,
+            flashcardsCompleted: prev.flashcardsCompleted || 0
+          };
+          localStorage.setItem('spanglish_stats', JSON.stringify(mergedStats));
+          return mergedStats;
+        });
       }
 
       // Fetch vocabulary
@@ -305,6 +389,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const currentUser = session?.user || null;
       setUser(currentUser);
       
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+      }
+
       if (currentUser) {
         setOnboardedState(true);
         localStorage.setItem('spanglish_onboarded', 'true');
@@ -593,6 +681,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const recordActivity = async (type: 'article' | 'chapter' | 'tutor' | 'flashcard', customPoints?: number) => {
+    const today = getTodayDateString();
+    const yesterday = getYesterdayDateString();
+
+    const pointsMap = {
+      article: 10,
+      chapter: 25,
+      tutor: 25,
+      flashcard: 1
+    };
+
+    let earned = customPoints ?? pointsMap[type];
+
+    let updatedStats: UserStats = stats;
+    setStats(prev => {
+      const isNewDay = prev.lastActiveDate !== today;
+      let newStreak = prev.streakCount;
+
+      if (isNewDay) {
+        if (prev.lastActiveDate === yesterday) {
+          newStreak += 1;
+        } else {
+          newStreak = 1;
+        }
+      } else if (newStreak === 0) {
+        newStreak = 1;
+      }
+
+      const prevDailyPoints = isNewDay ? 0 : (prev.dailyPoints || 0);
+      let prevFlashcardDaily = isNewDay ? 0 : (prev.flashcardsDailyPoints || 0);
+
+      if (type === 'flashcard') {
+        if (prevFlashcardDaily >= 20) {
+          earned = 0; // Capped at 20 XP max per day for flashcards
+        } else {
+          earned = Math.min(earned, 20 - prevFlashcardDaily);
+          prevFlashcardDaily += earned;
+        }
+      }
+
+      const newDailyPoints = prevDailyPoints + earned;
+
+      // Check if daily goal hit for bonus
+      const wasGoalHit = prevDailyPoints >= (prev.dailyGoal || 50);
+      const isNowGoalHit = newDailyPoints >= (prev.dailyGoal || 50);
+      const bonusXP = (!wasGoalHit && isNowGoalHit) ? 25 : 0;
+
+      const newTotalScore = (prev.totalScore || 0) + earned + bonusXP;
+
+      updatedStats = {
+        ...prev,
+        dailyPoints: newDailyPoints,
+        totalScore: newTotalScore,
+        streakCount: newStreak,
+        lastActiveDate: today,
+        flashcardsDailyPoints: prevFlashcardDaily,
+        articlesCompleted: type === 'article' ? (prev.articlesCompleted || 0) + 1 : (prev.articlesCompleted || 0),
+        chaptersCompleted: type === 'chapter' ? (prev.chaptersCompleted || 0) + 1 : (prev.chaptersCompleted || 0),
+        tutorLessonsCompleted: type === 'tutor' ? (prev.tutorLessonsCompleted || 0) + 1 : (prev.tutorLessonsCompleted || 0),
+        flashcardsCompleted: type === 'flashcard' ? (prev.flashcardsCompleted || 0) + 1 : (prev.flashcardsCompleted || 0),
+      };
+
+      localStorage.setItem('spanglish_stats', JSON.stringify(updatedStats));
+      return updatedStats;
+    });
+
+    if (user) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            total_score: updatedStats.totalScore,
+            streak_count: updatedStats.streakCount,
+            last_active_date: updatedStats.lastActiveDate,
+            daily_points: updatedStats.dailyPoints
+          })
+          .eq('id', user.id);
+      } catch (err) {
+        console.error('Error updating gamification stats in cloud:', err);
+      }
+    }
+  };
+
   const resetAllData = async () => {
     if (user) {
       try {
@@ -623,11 +794,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       chatSessions: 0,
       pronunciationAttempts: 0,
       avgPronunciationScore: 0,
-      totalPronunciationScore: 0
+      totalPronunciationScore: 0,
+      totalScore: 0,
+      dailyPoints: 0,
+      dailyGoal: 50,
+      streakCount: 0,
+      lastActiveDate: '',
+      flashcardsDailyPoints: 0,
+      articlesCompleted: 0,
+      chaptersCompleted: 0,
+      tutorLessonsCompleted: 0,
+      flashcardsCompleted: 0
     });
     setNotificationsEnabledState(true);
     setNotificationTimesState({ morning: '09:00', midday: '13:00', evening: '19:00' });
     setActiveTab('news');
+    setIsPasswordRecovery(false);
     setUser(null);
   };
 
@@ -646,6 +828,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       activeTab,
       notificationsEnabled,
       notificationTimes,
+      isPasswordRecovery,
+      setIsPasswordRecovery,
       setNativeLanguage,
       setLevel,
       setOnboarded,
@@ -656,6 +840,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSpeechRate,
       addPronunciationAttempt,
       incrementWordsTranslated,
+      recordActivity,
       resetAllData,
       setActiveTab,
       setNotificationsEnabled,

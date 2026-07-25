@@ -6,8 +6,8 @@ import { NewsModule } from './components/NewsModule';
 import { LiteratureModule } from './components/LiteratureModule';
 import { ChatModule } from './components/ChatModule';
 import { VocabularyModule } from './components/VocabularyModule';
-import { TranslatorModule } from './components/TranslatorModule';
-import { Newspaper, BookOpen, MessageSquare, Volume2, Languages, X, GraduationCap } from 'lucide-react';
+import { StreakHeaderMeter } from './components/StreakHeaderMeter';
+import { Newspaper, BookOpen, MessageSquare, Volume2, X, GraduationCap } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { scheduleAllReminders } from './utils/notifications';
 
@@ -36,7 +36,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Close floating bubble when tab changes
+  // Close floating bubble when tab changes or when in vocabulary tab
   useEffect(() => {
     closeBubble();
   }, [activeTab, closeBubble]);
@@ -61,7 +61,7 @@ const App: React.FC = () => {
             (action) => {
               console.log('Notification action performed:', action);
               const targetTab = action.notification.extra?.tab;
-              if (targetTab) {
+              if (targetTab && targetTab !== 'translate') {
                 setActiveTab(targetTab);
               }
             }
@@ -99,10 +99,13 @@ const App: React.FC = () => {
               </div>
             </div>
 
+            {/* Streak & Daily Progress Meter Header */}
+            <StreakHeaderMeter />
+
             {/* Main Screen scrollable area */}
             <div className="screen-content">
-              {/* Highlight Translation overlay card */}
-              {result.isOpen && (
+              {/* Highlight Translation overlay card (disabled in Vocabulary module) */}
+              {result.isOpen && activeTab !== 'vocabulary' && (
                 <div 
                   className="translate-bubble glass-card"
                   style={{
@@ -192,11 +195,10 @@ const App: React.FC = () => {
               {activeTab === 'news' && <NewsModule />}
               {activeTab === 'literature' && <LiteratureModule />}
               {activeTab === 'chat' && <ChatModule />}
-              {activeTab === 'translate' && <TranslatorModule />}
               {activeTab === 'vocabulary' && <VocabularyModule />}
             </div>
 
-            {/* Bottom Nav Bar (strictly 5 tabs rule) */}
+            {/* Bottom Nav Bar (4 tabs) */}
             <div className="bottom-nav">
               <button 
                 onClick={() => setActiveTab('news')}
@@ -227,17 +229,6 @@ const App: React.FC = () => {
                 <MessageSquare />
                 <span className="nav-tab-label">
                   {nativeLanguage === 'es' ? 'Tutor' : 'Tutor'}
-                </span>
-                <div className="nav-indicator"></div>
-              </button>
-
-              <button 
-                onClick={() => setActiveTab('translate')}
-                className={`nav-tab ${activeTab === 'translate' ? 'active' : ''}`}
-              >
-                <Languages />
-                <span className="nav-tab-label">
-                  {nativeLanguage === 'es' ? 'Traducir' : 'Translate'}
                 </span>
                 <div className="nav-indicator"></div>
               </button>

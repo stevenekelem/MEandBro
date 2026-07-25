@@ -75,7 +75,8 @@ export const ChatModule: React.FC = () => {
     clearChatHistory, 
     speechRate, 
     addPronunciationAttempt,
-    savedVocabulary
+    savedVocabulary,
+    recordActivity
   } = useApp();
 
   const [activeSubMode, setActiveSubMode] = useState<'chat' | 'pronounce' | 'study'>('study');
@@ -101,7 +102,12 @@ export const ChatModule: React.FC = () => {
   const [phraseSource, setPhraseSource] = useState<'standard' | 'vocabulary'>('standard');
   const [selectedPhraseIdx, setSelectedPhraseIdx] = useState(0);
   const [pronounceTranscript, setPronounceTranscript] = useState('');
-  const [scoreResult, setScoreResult] = useState<{ score: number; feedback: string; corrections?: string[] } | null>(null);
+  const [scoreResult, setScoreResult] = useState<{ 
+    score: number; 
+    feedback: string; 
+    corrections?: string[]; 
+    phoneticTips?: { word: string; ipa: string; tip: string }[] 
+  } | null>(null);
   const [scoring, setScoring] = useState(false);
   const [activePhrase, setActivePhrase] = useState<{ text: string; description: string }>({ text: '', description: '' });
   const [generatingPhrase, setGeneratingPhrase] = useState(false);
@@ -110,6 +116,7 @@ export const ChatModule: React.FC = () => {
   const recognitionRef = useRef<any>(null);
   const latestTranscriptRef = useRef('');
   const wasListeningRef = useRef(false);
+  const speechTimeoutRef = useRef<any>(null);
 
   // Compute available phrases based on source
   const phrases = React.useMemo(() => {
@@ -149,6 +156,11 @@ export const ChatModule: React.FC = () => {
   }, []);
 
   const onSpeechStopped = () => {
+    if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
+
     if (!wasListeningRef.current) return;
     wasListeningRef.current = false;
     setListening(false);
@@ -165,10 +177,28 @@ export const ChatModule: React.FC = () => {
       return;
     }
 
+    // Abort and clean up any previous browser recognition instance if it exists
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (err) {
+        console.error('Error aborting previous recognition:', err);
+      }
+      recognitionRef.current = null;
+    }
+
     setListening(true);
     wasListeningRef.current = true;
     latestTranscriptRef.current = '';
     const langCode = targetLanguage === 'es' ? 'es-MX' : 'en-US';
+
+    if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
+    }
+    speechTimeoutRef.current = setTimeout(() => {
+      console.log('Speech recognition timed out after 20 seconds');
+      stopListening();
+    }, 20000);
 
     if (Capacitor.isNativePlatform()) {
       // 1. Mobile Build: Use Capacitor native community plugin
@@ -290,6 +320,7 @@ export const ChatModule: React.FC = () => {
       if (data.text) {
         addChatMessage('model', data.text);
         speakText(data.text);
+        recordActivity('tutor');
       }
     } catch (error) {
       console.error('Study guide proxy error:', error);
@@ -326,6 +357,8 @@ export const ChatModule: React.FC = () => {
         addChatMessage('model', data.text);
         // Automatically speak tutor responses for auditory training
         speakText(data.text);
+        // Award tutor lesson activity score (+25 XP)
+        recordActivity('tutor');
       } else {
         throw new Error('No reply received');
       }
@@ -971,8 +1004,15 @@ export const ChatModule: React.FC = () => {
               {nativeLanguage === 'es' ? 'Lee esta frase en voz alta' : 'Read this phrase aloud'}
             </div>
             
-            <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', lineHeight: '1.4', padding: '0 8px' }}>
-              "{activePhrase.text}"
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', lineHeight: '1.4', padding: '0 8px' }}>
+                "{activePhrase.text}"
+              </div>
+              {activePhrase.description && (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                  {activePhrase.description}
+                </div>
+              )}
             </div>
 
             {/* Mic trigger */}
@@ -998,8 +1038,34 @@ export const ChatModule: React.FC = () => {
                   {listening ? <MicOff size={28} /> : <Mic size={28} />}
                 </button>
                 <span style={{ fontSize: '11px', color: listening ? 'var(--danger)' : 'var(--text-muted)', fontWeight: '600' }}>
-                  {listening ? (nativeLanguage === 'es' ? 'Escuchando...' : 'Listening...') : (nativeLanguage === 'es' ? 'Pulsa para Hablar' : 'Tap to Speak')}
+                  {listening ? (nativeLanguage === 'es' ? 'Escuchando (máx 20s)...' : 'Listening (max 20s)...') : (nativeLanguage === 'es' ? 'Pulsa para Hablar' : 'Tap to Speak')}
                 </span>
+                
+                {listening && (
+                  <button
+                    type="button"
+                    onClick={stopListening}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#f87171',
+                      padding: '8px 18px',
+                      borderRadius: '20px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      marginTop: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 4px 12px rgba(239, 68, 68, 0.1)'
+                    }}
+                  >
+                    <MicOff size={13} />
+                    <span>{nativeLanguage === 'es' ? 'Terminar y Evaluar' : 'Stop & Evaluate'}</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '10px', borderRadius: '10px', color: 'var(--danger)', fontSize: '12px' }}>
@@ -1073,6 +1139,42 @@ export const ChatModule: React.FC = () => {
                           <span key={i} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>
                             {w}
                           </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Phonetic tips */}
+                  {scoreResult.phoneticTips && scoreResult.phoneticTips.length > 0 && (
+                    <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px', textAlign: 'left' }}>
+                      <span style={{ fontSize: '10.5px', color: 'var(--primary)', fontWeight: '800', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                        <Sparkles size={11} />
+                        {nativeLanguage === 'es' ? 'Guía de Pronunciación Fonética:' : 'Phonetic Pronunciation Guide:'}
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {scoreResult.phoneticTips.map((tipObj: any, idx: number) => (
+                          <div 
+                            key={idx} 
+                            style={{ 
+                              background: 'rgba(139, 92, 246, 0.03)', 
+                              border: '1px solid var(--border)', 
+                              padding: '8px 10px', 
+                              borderRadius: '8px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                              <span style={{ fontWeight: '700', fontSize: '12.5px', color: 'var(--text-primary)' }}>{tipObj.word}</span>
+                              <span style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--primary)', background: 'rgba(139, 92, 246, 0.08)', padding: '1px 6px', borderRadius: '4px' }}>
+                                {tipObj.ipa}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.3' }}>
+                              {tipObj.tip}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>

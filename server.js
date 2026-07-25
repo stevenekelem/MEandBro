@@ -113,6 +113,46 @@ function getMockTutorResponse(nativeLanguage, level) {
   return reply;
 }
 
+const phoneticDatabase = {
+  // Spanish
+  "perro": { ipa: "/ˈpe.ro/", tip: "The double 'rr' requires a trill. Press the tip of your tongue against the roof of your mouth and blow air to vibrate it." },
+  "roque": { ipa: "/ˈro.ke/", tip: "Words starting with 'r' are rolled in Spanish. Trill the 'r' at the beginning." },
+  "rabo": { ipa: "/ˈra.βo/", tip: "The initial 'r' is trilled, and the 'b' between vowels is soft, pronounced by bringing your lips close together without fully stopping the air." },
+  "tres": { ipa: "/ˈtɾes/", tip: "The 'tr' is single-tapped. Tap the tip of your tongue against the roof of your mouth once quickly." },
+  "tristes": { ipa: "/ˈtɾistes/", tip: "Make sure to pronounce both 't's crisply with a single tap of the tongue for the 'r'." },
+  "tigres": { ipa: "/ˈti.ɣɾes/", tip: "The 'g' is soft (approximant), like a gentle hum in the throat." },
+  "tragan": { ipa: "/ˈtɾa.ɣan/", tip: "The 'g' is soft between vowels." },
+  "trigo": { ipa: "/ˈtɾi.ɣo/", tip: "Keep the 't' dental (tongue touching front teeth) and tap the 'r'." },
+  "trigal": { ipa: "/tɾiˈɣal/", tip: "The final 'l' is produced with the tip of the tongue against the upper teeth, not hollow like the English 'l'." },
+  "cómo": { ipa: "/ˈkomo/", tip: "The 'o's are short and crisp, like 'oh' without the 'w' sound at the end." },
+  "estás": { ipa: "/esˈtas/", tip: "Accent is on the second syllable. Make sure the 's' is voiced clearly." },
+  "hoy": { ipa: "/ˈoi/", tip: "The 'h' is completely silent. Pronounce it starting directly with the 'o' sound." },
+  "gustaría": { ipa: "/ɡustaˈria/", tip: "Accent is on the 'i'. Tap the 'r' quickly." },
+  "ordenar": { ipa: "/oɾdeˈnaɾ/", tip: "The 'r's are single taps, not the American retroflex 'r'." },
+  "café": { ipa: "/kaˈfe/", tip: "Do not aspirate the 'c'. It is a clean 'k' sound, and the 'e' is short and clean like in 'bet'." },
+  "por": { ipa: "/poɾ/", tip: "The 'r' is a quick single tap of the tongue against the alveolar ridge." },
+  "favor": { ipa: "/faˈβoɾ/", tip: "The 'v' is pronounced like a soft 'b' where the lips almost touch but let air pass." },
+  
+  // English
+  "how": { ipa: "/haʊ/", tip: "Start with a clean breath of air for 'h', and glide from 'ah' to 'oo'." },
+  "are": { ipa: "/ɑːr/", tip: "A long, open 'ah' sound. Curl the tip of your tongue slightly back for the 'r' if in American English." },
+  "today": { ipa: "/təˈdeɪ/", tip: "The first syllable is a weak schwa /ə/ ('tuh'), and the second is a clear diphthong /eɪ/ ('day')." },
+  "would": { ipa: "/wʊd/", tip: "The 'l' is completely silent. Pronounce it like 'wood'." },
+  "coffee": { ipa: "/ˈkɒfi/", tip: "The 'o' is open, and the 'ee' is a tense, long 'i' sound." },
+  "please": { ipa: "/pliːz/", tip: "The 's' is pronounced as a voiced 'z' sound. Vibrate your vocal cords." },
+  "she": { ipa: "/ʃiː/", tip: "The 'sh' is a voiceless postalveolar fricative. Push your lips forward slightly and blow." },
+  "sells": { ipa: "/selz/", tip: "The 's' at the end is pronounced as a voiced 'z'." },
+  "sea": { ipa: "/siː/", tip: "The 's' is sharp and dental, unlike the 'sh' in 'she'." },
+  "shells": { ipa: "/ʃelz/", tip: "Contrast the initial 'sh' sound with the 's' sound in 'sells'." },
+  "shore": { ipa: "/ʃɔːr/", tip: "Pronounce the 'sh' clearly, followed by the rounded vowel and 'r'." },
+  "peter": { ipa: "/ˈpiːtər/", tip: "Aspirate the initial 'p' with a small puff of air." },
+  "piper": { ipa: "/ˈpaɪpər/", tip: "Pronounce the diphthong /aɪ/ ('eye') clearly." },
+  "picked": { ipa: "/pɪkt/", tip: "The '-ed' ending is pronounced as a voiceless 't' because it follows the voiceless 'k' sound." },
+  "peck": { ipa: "/pek/", tip: "The 'e' is short, like in 'bed'." },
+  "pickled": { ipa: "/ˈpɪk.əld/", tip: "The '-ed' here is pronounced as a voiced 'd'." },
+  "peppers": { ipa: "/ˈpepərz/", tip: "Aspirate the first 'p', and make the second 'p' softer." }
+};
+
 function getMockPronounceScore(targetPhrase, userTranscript, targetLanguage) {
   const tClean = targetPhrase.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡]/g,"").trim();
   const uClean = userTranscript.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡]/g,"").trim();
@@ -121,8 +161,13 @@ function getMockPronounceScore(targetPhrase, userTranscript, targetLanguage) {
   const uWords = uClean.split(/\s+/);
   
   let matches = 0;
+  const corrections = [];
   tWords.forEach(w => {
-    if (uWords.includes(w)) matches++;
+    if (uWords.includes(w)) {
+      matches++;
+    } else {
+      corrections.push(w);
+    }
   });
   
   const score = Math.min(100, Math.round((matches / tWords.length) * 100));
@@ -136,7 +181,18 @@ function getMockPronounceScore(targetPhrase, userTranscript, targetLanguage) {
     feedback = targetLanguage === 'es' ? 'Se entiende un poco, pero practica la entonación y repítelo de nuevo.' : 'Try to speak a bit slower and check word endings.';
   }
   
-  return { score, feedback, matchingWords: matches, totalWords: tWords.length };
+  const phoneticTips = [];
+  corrections.forEach(w => {
+    if (phoneticDatabase[w]) {
+      phoneticTips.push({
+        word: w,
+        ipa: phoneticDatabase[w].ipa,
+        tip: phoneticDatabase[w].tip
+      });
+    }
+  });
+  
+  return { score, feedback, corrections, phoneticTips, matchingWords: matches, totalWords: tWords.length };
 }
 
 function getMockOfflinePhrases(targetLanguage, level, previousPhrase) {
@@ -323,6 +379,10 @@ Return a JSON object containing:
 1. "score": An integer from 0 to 100 representing accuracy.
 2. "feedback": A short, friendly sentence explaining what they did well and where they stumbled (max 2 sentences, written in the user's native language).
 3. "corrections": An array of specific words that were mispronounced or omitted.
+4. "phoneticTips": An array of objects for the mispronounced/omitted words, where each object contains:
+   - "word": The word itself.
+   - "ipa": The International Phonetic Alphabet (IPA) notation for the correct pronunciation of the word in the target language (e.g., "/ˈpe.ro/" for "perro" or "/ʃiː/" for "she").
+   - "tip": A clear, physical pronunciation guide in the user's native language explaining how to position their mouth/tongue/lips to make the correct sounds.
 
 Only output valid JSON. Do not wrap in markdown code blocks.`;
 
@@ -472,13 +532,98 @@ function matchesNativeLanguage(article, nativeLanguage) {
   }
 }
 
+// In-memory RAM cache for news (TTL: 30 minutes)
+const newsRamCache = new Map();
+
+// Helper to get local offline news fallback
+function getLocalNewsFallback(nativeLanguage, level) {
+  return nativeLanguage === 'en' 
+    ? [ // Spanish articles for English speakers
+        {
+          id: 'n1',
+          title: 'Avance científico en las selvas de Costa Rica',
+          category: 'Ciencia',
+          summary: level === 'basic' 
+            ? 'Científicos descubren una planta nueva. [Scientists discover a new plant.] La planta cura enfermedades del estómago. [The plant cures stomach illnesses.] Es un día feliz para la ciencia. [It is a happy day for science.]'
+            : level === 'intermediate'
+              ? 'Un grupo de botánicos en Costa Rica ha descubierto una nueva especie de planta medicinal en la selva. Esta planta parece tener compuestos químicos que combaten infecciones estomacales rápidamente. Los locales han usado infusiones similares durante décadas.'
+              : 'Un equipo internacional de investigadores en la península de Osa, Costa Rica, ha catalogado una especie vegetal inédita con propiedades antimicrobianas excepcionales. El hallazgo podría revolucionar el tratamiento de afecciones gastrointestinales bacterianas, validando el conocimiento ancestral etnobotánico de la región.',
+          vocab: [
+            { word: 'Científicos', translation: 'Scientists' },
+            { word: 'Selva', translation: 'Jungle/Forest' },
+            { word: 'Enfermedades', translation: 'Illnesses' }
+          ]
+        },
+        {
+          id: 'n2',
+          title: 'El festival del libro comienza en Madrid',
+          category: 'Cultura',
+          summary: level === 'basic' 
+            ? 'El parque del Retiro tiene muchos libros. [Retiro park has many books.] La gente compra novelas de amor y misterio. [People buy love and mystery novels.] El sol brilla mucho hoy. [The sun shines a lot today.]'
+            : level === 'intermediate'
+              ? 'La Feria del Libro de Madrid abre sus puertas este fin de semana en el Parque del Retiro. Se esperan miles de visitantes y más de 300 autores firmando sus obras. Es una gran oportunidad para conseguir autógrafos.'
+              : 'La septuagésima Feria del Libro de Madrid arranca hoy en el Parque del Retiro con el lema del fomento de la lectura juvenil. Con una cifra récord de casetas y la presencia de autores galardonados internacionalmente, el sector editorial prevé superar las cifras de venta prepandémicas.',
+          vocab: [
+            { word: 'Feria', translation: 'Fair' },
+            { word: 'Firmando', translation: 'Signing' },
+            { word: 'Obras', translation: 'Works/Books' }
+          ]
+        }
+      ]
+    : [ // English articles for Spanish speakers
+        {
+          id: 'n1',
+          title: 'New Solar Power Record in California',
+          category: 'Science',
+          summary: level === 'basic' 
+            ? 'California makes a lot of clean energy. [California produce mucha energía limpia.] Solar panels cover the desert. [Los paneles solares cubren el desierto.] The air is cleaner now. [El aire es más limpio ahora.]'
+            : level === 'intermediate'
+              ? 'California has set a new record by generating 95% of its electricity from renewable sources for a short time on Sunday. Most of it came from massive solar farms in the Mojave desert, showing the rapid growth of green power.'
+              : 'California briefly achieved a milestone by meeting 95% of its grid demand with clean energy, driven by surge outputs from utility-scale solar arrays. Grid operators noted this highlights the necessity of expanding battery storage systems to manage peak load volatility.',
+          vocab: [
+            { word: 'Renewable', translation: 'Renovable' },
+            { word: 'Desert', translation: 'Desierto' },
+            { word: 'Grid', translation: 'Red eléctrica' }
+          ]
+        },
+        {
+          id: 'n2',
+          title: 'Classic Theatre Festival Starts in London',
+          category: 'Culture',
+          summary: level === 'basic' 
+            ? 'Actors play Shakespeare stories in London. [Los actores interpretan historias de Shakespeare en Londres.] People sit outside. [La gente se sienta afuera.] The tickets are cheap. [Las entradas son baratas.]'
+            : level === 'intermediate'
+              ? 'The open-air Shakespeare festival has begun in London. Audiences can watch classic plays like Hamlet under the stars. Tickets are selling out quickly, so organizers recommend booking in advance.'
+              : 'London\'s annual Open Air Theatre season commenced in Regent\'s Park, headlining a modern adaptation of Shakespearean classics. The production blends historical prose with contemporary set designs, drawing critical acclaim from theatre enthusiasts.',
+          vocab: [
+            { word: 'Open-air', translation: 'Al aire libre' },
+            { word: 'Audiences', translation: 'Público/Espectadores' },
+            { word: 'Booking', translation: 'Reservar' }
+          ]
+        }
+      ];
+}
+
 // 3. News Synopsis Generator
 app.post('/api/news', async (req, res) => {
-  const { nativeLanguage = 'en', level = 'intermediate' } = req.body;
+  const { nativeLanguage = 'en', level = 'intermediate', refresh = false } = req.body;
   const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
+  const cacheKey = `${nativeLanguage}_${level}`;
 
-  // 3a. If Supabase is configured, try to fetch pre-generated news from the database
-  if (supabase) {
+  // 3a. Check Express RAM Cache (30 min TTL) unless explicit refresh requested
+  if (!refresh) {
+    const ramCached = newsRamCache.get(cacheKey);
+    if (ramCached && (Date.now() - ramCached.timestamp < 30 * 60 * 1000)) {
+      console.log(`[News API] Serving RAM-cached daily news for ${cacheKey} (<10ms)`);
+      return res.json(ramCached.data);
+    }
+  } else {
+    console.log(`[News API] Refresh requested by client for ${cacheKey}. Bypassing RAM cache.`);
+    newsRamCache.delete(cacheKey);
+  }
+
+  // 3b. If Supabase is configured and NOT a refresh request, try database cache
+  if (supabase && !refresh) {
     try {
       console.log(`[News API] Querying database for daily news articles matching native language: ${nativeLanguage}`);
       const { data: dbArticles, error: dbError } = await supabase
@@ -486,15 +631,23 @@ app.post('/api/news', async (req, res) => {
         .select('*')
         .is('user_id', null)
         .order('created_at', { ascending: false })
-        .limit(15);
+        .limit(20);
       
       if (!dbError && dbArticles && dbArticles.length > 0) {
-        // Filter articles using the language heuristic to find ones matching the requested native language
+        // Filter articles using language heuristic
         const matchedArticles = dbArticles.filter(art => matchesNativeLanguage(art, nativeLanguage));
         
-        if (matchedArticles.length >= 2) {
-          console.log(`[News API] Found ${matchedArticles.length} cached daily news articles. Returning top 2.`);
-          const responseData = matchedArticles.slice(0, 2).map(art => ({
+        if (matchedArticles.length >= 1) {
+          console.log(`[News API] Found ${matchedArticles.length} cached daily news articles in DB. Returning top ${Math.min(2, matchedArticles.length)}.`);
+          let selected = matchedArticles.slice(0, 2);
+          
+          // If only 1 article found, pair with 1 fallback
+          if (selected.length < 2) {
+            const fallback = getLocalNewsFallback(nativeLanguage, level);
+            selected.push(fallback[1]);
+          }
+
+          const responseData = selected.map(art => ({
             id: art.id,
             title: art.title,
             category: art.category,
@@ -507,6 +660,9 @@ app.post('/api/news', async (req, res) => {
             submitted_url: art.submitted_url || undefined,
             created_at: art.created_at
           }));
+
+          // Store in RAM cache
+          newsRamCache.set(cacheKey, { timestamp: Date.now(), data: responseData });
           return res.json(responseData);
         }
       }
@@ -518,78 +674,14 @@ app.post('/api/news', async (req, res) => {
     }
   }
 
-  // 3b. Offline fallback if no API key is configured
+  // 3c. Offline fallback if no AI is configured
   if (!ai) {
-    // Return high-quality pre-baked local news data
-    const localNews = nativeLanguage === 'en' 
-      ? [ // Spanish articles for English speakers
-          {
-            id: 'n1',
-            title: 'Avance científico en las selvas de Costa Rica',
-            category: 'Ciencia',
-            summary: level === 'basic' 
-              ? 'Científicos descubren una planta nueva. [Scientists discover a new plant.] La planta cura enfermedades del estómago. [The plant cures stomach illnesses.] Es un día feliz para la ciencia. [It is a happy day for science.]'
-              : level === 'intermediate'
-                ? 'Un grupo de botánicos en Costa Rica ha descubierto una nueva especie de planta medicinal en la selva. Esta planta parece tener compuestos químicos que combaten infecciones estomacales rápidamente. Los locales han usado infusiones similares durante décadas.'
-                : 'Un equipo internacional de investigadores en la península de Osa, Costa Rica, ha catalogado una especie vegetal inédita con propiedades antimicrobianas excepcionales. El hallazgo podría revolucionar el tratamiento de afecciones gastrointestinales bacterianas, validando el conocimiento ancestral etnobotánico de la región.',
-            vocab: [
-              { word: 'Científicos', translation: 'Scientists' },
-              { word: 'Selva', translation: 'Jungle/Forest' },
-              { word: 'Enfermedades', translation: 'Illnesses' }
-            ]
-          },
-          {
-            id: 'n2',
-            title: 'El festival del libro comienza en Madrid',
-            category: 'Cultura',
-            summary: level === 'basic' 
-              ? 'El parque del Retiro tiene muchos libros. [Retiro park has many books.] La gente compra novelas de amor y misterio. [People buy love and mystery novels.] El sol brilla mucho hoy. [The sun shines a lot today.]'
-              : level === 'intermediate'
-                ? 'La Feria del Libro de Madrid abre sus puertas este fin de semana en el Parque del Retiro. Se esperan miles de visitantes y más de 300 autores firmando sus obras. Es una gran oportunidad para conseguir autógrafos.'
-                : 'La septuagésima Feria del Libro de Madrid arranca hoy en el Parque del Retiro con el lema del fomento de la lectura juvenil. Con una cifra récord de casetas y la presencia de autores galardonados internacionalmente, el sector editorial prevé superar las cifras de venta prepandémicas.',
-            vocab: [
-              { word: 'Feria', translation: 'Fair' },
-              { word: 'Firmando', translation: 'Signing' },
-              { word: 'Obras', translation: 'Works/Books' }
-            ]
-          }
-        ]
-      : [ // English articles for Spanish speakers
-          {
-            id: 'n1',
-            title: 'New Solar Power Record in California',
-            category: 'Science',
-            summary: level === 'basic' 
-              ? 'California makes a lot of clean energy. [California produce mucha energía limpia.] Solar panels cover the desert. [Los paneles solares cubren el desierto.] The air is cleaner now. [El aire es más limpio ahora.]'
-              : level === 'intermediate'
-                ? 'California has set a new record by generating 95% of its electricity from renewable sources for a short time on Sunday. Most of it came from massive solar farms in the Mojave desert, showing the rapid growth of green power.'
-                : 'California briefly achieved a milestone by meeting 95% of its grid demand with clean energy, driven by surge outputs from utility-scale solar arrays. Grid operators noted this highlights the necessity of expanding battery storage systems to manage peak load volatility.',
-            vocab: [
-              { word: 'Renewable', translation: 'Renovable' },
-              { word: 'Desert', translation: 'Desierto' },
-              { word: 'Grid', translation: 'Red eléctrica' }
-            ]
-          },
-          {
-            id: 'n2',
-            title: 'Classic Theatre Festival Starts in London',
-            category: 'Culture',
-            summary: level === 'basic' 
-              ? 'Actors play Shakespeare stories in London. [Los actores interpretan historias de Shakespeare en Londres.] People sit outside. [La gente se sienta afuera.] The tickets are cheap. [Las entradas son baratas.]'
-              : level === 'intermediate'
-                ? 'The open-air Shakespeare festival has begun in London. Audiences can watch classic plays like Hamlet under the stars. Tickets are selling out quickly, so organizers recommend booking in advance.'
-                : 'London\'s annual Open Air Theatre season commenced in Regent\'s Park, headlining a modern adaptation of Shakespearean classics. The production blends historical prose with contemporary set designs, drawing critical acclaim from theatre enthusiasts.',
-            vocab: [
-              { word: 'Open-air', translation: 'Al aire libre' },
-              { word: 'Audiences', translation: 'Público/Espectadores' },
-              { word: 'Booking', translation: 'Reservar' }
-            ]
-          }
-        ];
+    const localNews = getLocalNewsFallback(nativeLanguage, level);
+    newsRamCache.set(cacheKey, { timestamp: Date.now(), data: localNews });
     return res.json(localNews);
   }
 
-  // 3c. Generate daily articles using Gemini (cache-miss)
+  // 3d. Fast AI generation using Gemini (cache-miss)
   try {
     const targetName = targetLanguage === 'es' ? 'Spanish' : 'English';
     const nativeName = nativeLanguage === 'es' ? 'Spanish' : 'English';
@@ -608,44 +700,49 @@ Only output a valid JSON array of 2 objects. Do not wrap in markdown code blocks
 
     const prompt = `Generate 2 news articles. Target Language: ${targetName}, Native Language: ${nativeName}`;
 
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'];
+    // Fast-track model prioritization (fastest first)
+    const modelsToTry = ['gemini-2.5-flash-lite', 'gemini-1.5-flash', 'gemini-2.5-flash'];
     let responseText = '';
     let success = false;
     let lastError = null;
 
     for (const modelName of modelsToTry) {
       try {
-        console.log(`[News Gen Cache-Miss] Trying model: ${modelName}`);
+        console.log(`[News Gen Cache-Miss] Trying fast model: ${modelName}`);
         const model = ai.getGenerativeModel({ 
           model: modelName,
           systemInstruction: systemPrompt
         });
 
-        const result = await model.generateContent({
+        // 2.5 second per-model timeout to avoid hanging the client
+        const generatePromise = model.generateContent({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
             responseMimeType: "application/json",
-            temperature: 0.8,
+            temperature: 0.7,
           }
         });
 
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('AI Model Timeout (2.5s)')), 2500)
+        );
+
+        const result = await Promise.race([generatePromise, timeoutPromise]);
         const response = await result.response;
         responseText = response.text();
         success = true;
         break;
       } catch (err) {
-        console.warn(`[News Gen Cache-Miss] Model ${modelName} failed:`, err.message);
+        console.warn(`[News Gen Cache-Miss] Model ${modelName} failed/timed out:`, err.message);
         lastError = err;
       }
     }
 
     if (!success) {
-      throw lastError;
+      throw lastError || new Error('All AI models timed out');
     }
 
     const generatedArticles = JSON.parse(responseText);
-    
-    // Save to database (Write-through cache) and format response for user
     const responseData = [];
     
     if (Array.isArray(generatedArticles)) {
@@ -653,10 +750,9 @@ Only output a valid JSON array of 2 objects. Do not wrap in markdown code blocks
         const art = generatedArticles[i];
         const dummyUrl = `https://spanglish.app/daily-news/${nativeLanguage}/${Date.now()}/${i}/${Math.random()}`;
         
-        // Save to Supabase (ignore insert failures to not block response)
         if (supabase) {
           try {
-            console.log(`[News Gen Cache-Miss] Caching article: "${art.title}"`);
+            console.log(`[News Gen Cache-Miss] Caching article to DB: "${art.title}"`);
             await supabase.from('news_articles').insert({
               user_id: null,
               title: art.title,
@@ -672,7 +768,6 @@ Only output a valid JSON array of 2 objects. Do not wrap in markdown code blocks
           }
         }
         
-        // Add to response array mapped to requested level
         responseData.push({
           id: `gen-${Date.now()}-${i}`,
           title: art.title,
@@ -687,11 +782,14 @@ Only output a valid JSON array of 2 objects. Do not wrap in markdown code blocks
         });
       }
     }
-    
-    res.json(responseData);
-  } catch (error) {
-    console.error('Gemini News Gen Cache-Miss Error:', error);
-    res.status(500).json({ error: 'Failed to generate news.', details: error.message });
+
+    newsRamCache.set(cacheKey, { timestamp: Date.now(), data: responseData });
+    return res.json(responseData);
+  } catch (err) {
+    console.warn('[News Gen Cache-Miss] AI Generation failed or timed out. Falling back to local articles:', err.message);
+    const fallback = getLocalNewsFallback(nativeLanguage, level);
+    newsRamCache.set(cacheKey, { timestamp: Date.now(), data: fallback });
+    return res.json(fallback);
   }
 });
 
