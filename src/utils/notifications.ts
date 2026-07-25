@@ -30,7 +30,7 @@ export const cancelAllReminders = async () => {
   if (!Capacitor.isNativePlatform()) return;
   try {
     const pending = await LocalNotifications.getPending();
-    if (pending.notifications.length > 0) {
+    if (pending.notifications && pending.notifications.length > 0) {
       await LocalNotifications.cancel({ notifications: pending.notifications });
       console.log(`Cancelled ${pending.notifications.length} pending notifications.`);
     }
@@ -40,7 +40,28 @@ export const cancelAllReminders = async () => {
 };
 
 /**
- * Schedules all three daily reminders (morning, midday, evening) based on user configuration.
+ * Ensures high-priority notification channel exists on Android.
+ */
+const ensureNotificationChannel = async () => {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await LocalNotifications.createChannel({
+      id: 'spanglish_reminders',
+      name: 'Spanglish Learning Reminders',
+      description: 'Daily learning reminders for news, lessons, and literature',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+    });
+  } catch (err) {
+    console.warn('Notification channel setup log:', err);
+  }
+};
+
+/**
+ * Schedules individual explicit future reminders for the next 14 days.
+ * This guarantees no past dates fire immediately on app open, and ensures
+ * exact timing on Android devices across all OS power profiles.
  */
 export const scheduleAllReminders = async (
   enabled: boolean,
@@ -66,9 +87,11 @@ export const scheduleAllReminders = async (
     return;
   }
 
+  await ensureNotificationChannel();
+
   try {
     const parseTime = (timeStr: string) => {
-      const [hour, minute] = timeStr.split(':').map(Number);
+      const [hour, minute] = (timeStr || '09:00').split(':').map(Number);
       return { hour: hour ?? 9, minute: minute ?? 0 };
     };
 
@@ -76,44 +99,78 @@ export const scheduleAllReminders = async (
     const middayTime = parseTime(times.midday);
     const eveningTime = parseTime(times.evening);
 
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: 1,
+    const now = Date.now();
+    const DAYS_TO_SCHEDULE = 14;
+    const notificationsToSchedule: any[] = [];
+
+    const getTargetDate = (hour: number, minute: number, dayOffset: number): Date | null => {
+      const target = new Date();
+      target.setDate(target.getDate() + dayOffset);
+      target.setHours(hour, minute, 0, 0);
+
+      // If scheduled time is in the past or within 5 seconds from now, skip it so it NEVER fires immediately!
+      if (target.getTime() <= now + 5000) {
+        return null;
+      }
+      return target;
+    };
+
+    for (let d = 0; d < DAYS_TO_SCHEDULE; d++) {
+      // 1. Morning News
+      const morningDate = getTargetDate(morningTime.hour, morningTime.minute, d);
+      if (morningDate) {
+        notificationsToSchedule.push({
+          id: 1000 + d,
           title: "Noticias de la Mañana 🌅",
           body: "Start your morning by checking today's top stories in Spanish!",
           extra: { tab: 'news' },
+          channelId: 'spanglish_reminders',
           schedule: {
-            on: morningTime,
-            every: 'day',
+            at: morningDate,
             allowWhileIdle: true
           }
-        },
-        {
-          id: 2,
+        });
+      }
+
+      // 2. Midday Lesson
+      const middayDate = getTargetDate(middayTime.hour, middayTime.minute, d);
+      if (middayDate) {
+        notificationsToSchedule.push({
+          id: 2000 + d,
           title: "Lección del Mediodía 💬",
           body: "Time for a quick midday drill! Practise chatting with your AI Tutor.",
           extra: { tab: 'chat' },
+          channelId: 'spanglish_reminders',
           schedule: {
-            on: middayTime,
-            every: 'day',
+            at: middayDate,
             allowWhileIdle: true
           }
-        },
-        {
-          id: 3,
+        });
+      }
+
+      // 3. Evening Literature
+      const eveningDate = getTargetDate(eveningTime.hour, eveningTime.minute, d);
+      if (eveningDate) {
+        notificationsToSchedule.push({
+          id: 3000 + d,
           title: "Lectura de la Noche 📖",
           body: "Wind down tonight with an interesting short story in Spanish.",
           extra: { tab: 'literature' },
+          channelId: 'spanglish_reminders',
           schedule: {
-            on: eveningTime,
-            every: 'day',
+            at: eveningDate,
             allowWhileIdle: true
           }
-        }
-      ]
-    });
-    console.log('Scheduled 3 daily reminders successfully:', times);
+        });
+      }
+    }
+
+    if (notificationsToSchedule.length > 0) {
+      await LocalNotifications.schedule({
+        notifications: notificationsToSchedule
+      });
+      console.log(`Successfully scheduled ${notificationsToSchedule.length} explicit future notifications over the next 14 days.`);
+    }
   } catch (err) {
     console.error('Failed to schedule local notifications:', err);
   }
@@ -133,6 +190,8 @@ export const sendTestNotification = async (tab: 'news' | 'chat' | 'literature') 
     console.warn('Cannot trigger test notification: Permission not granted.');
     return;
   }
+
+  await ensureNotificationChannel();
 
   let title = '';
   let body = '';
@@ -164,6 +223,7 @@ export const sendTestNotification = async (tab: 'news' | 'chat' | 'literature') 
           title,
           body,
           extra: { tab },
+          channelId: 'spanglish_reminders',
           schedule: {
             at: new Date(Date.now() + 3000), // Fire in 3 seconds
             allowWhileIdle: true
