@@ -1784,7 +1784,7 @@ app.post('/api/auth/welcome-email', async (req, res) => {
 });
 
 // POST /api/report-ai-content
-app.post('/api/report-ai-content', async (req, res) => {
+app.post(['/api/report-ai-content', '/report-ai-content'], async (req, res) => {
   const { aiResponse, userText, reportReason, userComments, userEmail } = req.body;
   if (!aiResponse) {
     return res.status(400).json({ error: 'AI response content is required.' });
@@ -1860,7 +1860,7 @@ app.post('/api/report-ai-content', async (req, res) => {
 });
 
 // POST /api/feedback
-app.post('/api/feedback', async (req, res) => {
+app.post(['/api/feedback', '/feedback'], async (req, res) => {
   const { category, message, userEmail } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Feedback message is required.' });

@@ -28,6 +28,7 @@ export const SettingsModule: React.FC = () => {
   const [feedbackEmail, setFeedbackEmail] = useState(user?.email || '');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (user?.email && !feedbackEmail) {
@@ -35,11 +36,15 @@ export const SettingsModule: React.FC = () => {
     }
   }, [user]);
 
-  const handleSendFeedback = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!feedbackMessage.trim()) return;
+  const handleSendFeedback = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!feedbackMessage.trim()) {
+      setFeedbackError(nativeLanguage === 'es' ? 'Por favor escribe un mensaje antes de enviar.' : 'Please enter your message before submitting.');
+      return;
+    }
     setSubmittingFeedback(true);
     setFeedbackSuccess(null);
+    setFeedbackError(null);
     try {
       const res = await fetch(getApiUrl('api/feedback'), {
         method: 'POST',
@@ -53,13 +58,13 @@ export const SettingsModule: React.FC = () => {
       if (res.ok) {
         setFeedbackSuccess(nativeLanguage === 'es' ? '¡Muchas gracias por tus comentarios!' : 'Thank you so much for your feedback!');
         setFeedbackMessage('');
-        setTimeout(() => setFeedbackSuccess(null), 3500);
+        setTimeout(() => setFeedbackSuccess(null), 4000);
       } else {
-        alert('Failed to send feedback. Please try again.');
+        setFeedbackError(nativeLanguage === 'es' ? 'Error al enviar comentarios. Intenta de nuevo.' : 'Failed to send feedback. Please try again.');
       }
     } catch (err) {
       console.error('Error submitting feedback:', err);
-      alert('Error sending feedback.');
+      setFeedbackError(nativeLanguage === 'es' ? 'Error de conexión al enviar comentarios.' : 'Network error sending feedback.');
     } finally {
       setSubmittingFeedback(false);
     }
@@ -106,6 +111,20 @@ export const SettingsModule: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {feedbackError && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            color: 'var(--danger)',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            fontWeight: '600'
+          }}>
+            {feedbackError}
+          </div>
+        )}
 
         {feedbackSuccess ? (
           <div style={{
@@ -197,7 +216,8 @@ export const SettingsModule: React.FC = () => {
 
             <button
               type="submit"
-              disabled={submittingFeedback || !feedbackMessage.trim()}
+              onClick={handleSendFeedback}
+              disabled={submittingFeedback}
               style={{
                 background: 'var(--primary-gradient)',
                 border: 'none',
@@ -211,7 +231,7 @@ export const SettingsModule: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
-                opacity: (submittingFeedback || !feedbackMessage.trim()) ? 0.6 : 1,
+                opacity: submittingFeedback ? 0.6 : 1,
                 transition: 'all 0.2s ease'
               }}
             >
