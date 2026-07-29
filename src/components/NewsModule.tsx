@@ -3,10 +3,21 @@ import { useApp } from '../context/AppContext';
 import { supabase } from '../utils/supabase';
 import { 
   RefreshCw, Volume2, Plus, Check, 
-  CheckCircle2, Sparkles, BookOpen
+  CheckCircle2, Sparkles, BookOpen, ExternalLink
 } from 'lucide-react';
 import { speakTextWithBestVoice } from '../utils/speech';
 import { getApiUrl } from '../utils/api';
+
+// Helper to extract clean domain name from article URL
+const getDomainName = (urlStr?: string): string => {
+  if (!urlStr) return '';
+  try {
+    const url = new URL(urlStr);
+    return url.hostname.replace(/^www\./, '');
+  } catch {
+    return 'Website Source';
+  }
+};
 
 interface NewsItem {
   id: string;
@@ -86,6 +97,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-ciencia-1',
         title: 'Avance científico en las selvas de Costa Rica',
         category: 'Ciencia',
+        submitted_url: 'https://elpais.com/ciencia',
         created_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
         summary: level === 'basic' 
           ? 'Científicos descubren una planta nueva. [Scientists discover a new plant.] La planta cura enfermedades del estómago. [The plant cures stomach illnesses.] Es un día feliz para la ciencia. [It is a happy day for science.]'
@@ -102,6 +114,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-cultura-1',
         title: 'El gran festival del libro comienza en Madrid',
         category: 'Cultura',
+        submitted_url: 'https://elmundolibros.es',
         created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
         summary: level === 'basic' 
           ? 'El parque del Retiro tiene muchos libros. [Retiro park has many books.] La gente compra novelas de amor y misterio. [People buy love and mystery novels.] El sol brilla mucho hoy. [The sun shines a lot today.]'
@@ -118,6 +131,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-mundo-1',
         title: 'Ciudades verdes: El futuro urbano en Latinoamérica',
         category: 'Mundo',
+        submitted_url: 'https://bbc.com/mundo',
         created_at: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
         summary: level === 'basic' 
           ? 'Las ciudades siembran árboles en las calles. [Cities plant trees in the streets.] El aire es más fresco y limpio. [The air is fresher and cleaner.] Los parques ayudan a todos. [Parks help everyone.]'
@@ -134,6 +148,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-deportes-1',
         title: 'Atletas rompen récords en el campeonato iberoamericano',
         category: 'Deportes',
+        submitted_url: 'https://marca.com/atletismo',
         created_at: new Date(Date.now() - 1000 * 60 * 450).toISOString(),
         summary: level === 'basic' 
           ? 'Los corredores corren muy rápido. [The runners run very fast.] Ganaron medallas de oro y plata. [They won gold and silver medals.] La gente celebra en el estadio. [People celebrate in the stadium.]'
@@ -150,6 +165,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-entretenimiento-1',
         title: 'El nuevo cine en español triunfa en festivales internacionales',
         category: 'Entretenimiento',
+        submitted_url: 'https://rtve.es/noticias',
         created_at: new Date(Date.now() - 1000 * 60 * 600).toISOString(),
         summary: level === 'basic' 
           ? 'Una nueva película de cine gusta a todos. [A new movie pleases everyone.] Los actores reciben aplausos. [The actors receive applause.] El director sonríe feliz. [The director smiles happily.]'
@@ -170,6 +186,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-ciencia-1',
         title: 'New Solar Power Record Achieved in California',
         category: 'Science',
+        submitted_url: 'https://techcrunch.com',
         created_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
         summary: level === 'basic' 
           ? 'California makes a lot of clean energy. [California produce mucha energía limpia.] Solar panels cover the desert. [Los paneles solares cubren el desierto.] The air is cleaner now. [El aire es más limpio ahora.]'
@@ -186,6 +203,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-cultura-1',
         title: 'Classic Theatre Festival Commences in London',
         category: 'Culture',
+        submitted_url: 'https://theguardian.com/culture',
         created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
         summary: level === 'basic' 
           ? 'Actors play Shakespeare stories in London. [Los actores interpretan historias de Shakespeare en Londres.] People sit outside. [La gente se sienta afuera.] The tickets are cheap. [Las entradas son baratas.]'
@@ -202,6 +220,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-mundo-1',
         title: 'Global Urban Parks Expansion Program Launched',
         category: 'World',
+        submitted_url: 'https://bbc.com/news',
         created_at: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
         summary: level === 'basic' 
           ? 'Big cities build new green parks. [Las grandes ciudades construyen nuevos parques verdes.] Children play outside happily. [Los niños juegan afuera felizmente.] Nature helps city life. [La naturaleza ayuda a la vida urbana.]'
@@ -218,6 +237,7 @@ const getTopicSeedNews = (nativeLanguage: 'en' | 'es', level: string): NewsItem[
         id: 'seed-deportes-1',
         title: 'Young Marathon Runner Breaks Historic Record',
         category: 'Sports',
+        submitted_url: 'https://espn.com',
         created_at: new Date(Date.now() - 1000 * 60 * 450).toISOString(),
         summary: level === 'basic' 
           ? 'A young runner wins the race. [Un joven corredor gana la carrera.] He ran faster than everyone. [Él corrió más rápido que todos.] The crowd cheers loudly. [La multitud anima ruidosamente.]'
@@ -615,20 +635,47 @@ export const NewsModule: React.FC = () => {
             ) : (
               latestPopularArticles.map(item => (
                 <div key={item.id} className="card animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* Category & Date Badge */}
+                  {/* Category, Source Link & Date Badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '700', 
-                      background: 'var(--primary-glow)', 
-                      color: 'var(--primary)',
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      {item.category}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        fontWeight: '700', 
+                        background: 'var(--primary-glow)', 
+                        color: 'var(--primary)',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        {item.category}
+                      </span>
+
+                      {item.submitted_url && (
+                        <a
+                          href={item.submitted_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: '11px',
+                            color: 'var(--primary)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            textDecoration: 'none',
+                            fontWeight: '600',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            padding: '3px 8px',
+                            borderRadius: '12px'
+                          }}
+                          title={`Visit original article on ${getDomainName(item.submitted_url)}`}
+                        >
+                          <ExternalLink size={11} />
+                          <span>{getDomainName(item.submitted_url)}</span>
+                        </a>
+                      )}
+                    </div>
 
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       {formatPublishDate(item.created_at, nativeLanguage)}
@@ -756,20 +803,47 @@ export const NewsModule: React.FC = () => {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '700', 
-                      background: 'rgba(16, 185, 129, 0.15)', 
-                      color: '#10b981',
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}>
-                      <Check size={12} />
-                      {nativeLanguage === 'es' ? 'Leído' : 'Read'} • {item.category}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        fontWeight: '700', 
+                        background: 'rgba(16, 185, 129, 0.15)', 
+                        color: '#10b981',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        <Check size={12} />
+                        {nativeLanguage === 'es' ? 'Leído' : 'Read'} • {item.category}
+                      </span>
+
+                      {item.submitted_url && (
+                        <a
+                          href={item.submitted_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: '11px',
+                            color: '#10b981',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            textDecoration: 'none',
+                            fontWeight: '600',
+                            background: 'var(--surface)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            padding: '3px 8px',
+                            borderRadius: '12px'
+                          }}
+                          title={`Visit original article on ${getDomainName(item.submitted_url)}`}
+                        >
+                          <ExternalLink size={11} />
+                          <span>{getDomainName(item.submitted_url)}</span>
+                        </a>
+                      )}
+                    </div>
 
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                       {formatPublishDate(item.created_at, nativeLanguage)}
