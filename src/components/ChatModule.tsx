@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
 import { Capacitor } from '@capacitor/core';
-import { Send, Mic, MicOff, Volume2, Sparkles, Languages, CheckCircle2, AlertCircle, BookOpen } from 'lucide-react';
+import { Send, Mic, MicOff, Volume2, Sparkles, Languages, CheckCircle2, AlertCircle, BookOpen, Flag, X } from 'lucide-react';
 import { getApiUrl } from '../utils/api';
 
 // Selected practice phrases based on target language
@@ -76,7 +76,8 @@ export const ChatModule: React.FC = () => {
     speechRate, 
     addPronunciationAttempt,
     savedVocabulary,
-    recordActivity
+    recordActivity,
+    user
   } = useApp();
 
   const [activeSubMode, setActiveSubMode] = useState<'chat' | 'pronounce' | 'study'>('study');
@@ -111,6 +112,56 @@ export const ChatModule: React.FC = () => {
   const [scoring, setScoring] = useState(false);
   const [activePhrase, setActivePhrase] = useState<{ text: string; description: string }>({ text: '', description: '' });
   const [generatingPhrase, setGeneratingPhrase] = useState(false);
+
+  // Report AI Content modal state
+  const [reportingMsg, setReportingMsg] = useState<any>(null);
+  const [reportReason, setReportReason] = useState('Offensive or inappropriate content');
+  const [reportComments, setReportComments] = useState('');
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState<string | null>(null);
+
+  const openReportModal = (msg: any) => {
+    setReportingMsg(msg);
+    setReportReason('Offensive or inappropriate content');
+    setReportComments('');
+    setReportSuccess(null);
+  };
+
+  const handleSendReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportingMsg) return;
+    setSubmittingReport(true);
+    try {
+      const msgIndex = chatHistory.findIndex(m => m.id === reportingMsg.id);
+      const prevUserMsg = msgIndex > 0 && chatHistory[msgIndex - 1].role === 'user' ? chatHistory[msgIndex - 1].content : '';
+
+      const res = await fetch(getApiUrl('api/report-ai-content'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aiResponse: reportingMsg.content,
+          userText: prevUserMsg,
+          reportReason,
+          userComments: reportComments,
+          userEmail: user?.email || ''
+        })
+      });
+      if (res.ok) {
+        setReportSuccess(nativeLanguage === 'es' ? '¡Gracias! La respuesta ha sido reportada.' : 'Thank you! The response has been reported for review.');
+        setTimeout(() => {
+          setReportingMsg(null);
+          setReportSuccess(null);
+        }, 1800);
+      } else {
+        alert('Failed to send report. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error reporting content:', err);
+      alert('Error submitting report.');
+    } finally {
+      setSubmittingReport(false);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -724,23 +775,46 @@ export const ChatModule: React.FC = () => {
                       boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                     }}
                   >
-                    {/* Read response button for tutor */}
+                    {/* Action buttons for tutor response (listen & report) */}
                     {msg.role === 'model' && (
-                      <button 
-                        onClick={() => speakText(msg.content)}
-                        style={{
-                          float: 'right',
-                          background: 'var(--bg-app)',
-                          border: 'none',
-                          color: 'var(--primary)',
-                          padding: '3px',
-                          borderRadius: '4px',
-                          marginLeft: '8px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Volume2 size={12} />
-                      </button>
+                      <div style={{ float: 'right', display: 'flex', gap: '4px', marginLeft: '8px' }}>
+                        <button 
+                          onClick={() => speakText(msg.content)}
+                          title={nativeLanguage === 'es' ? 'Escuchar' : 'Listen'}
+                          style={{
+                            background: 'var(--bg-app)',
+                            border: 'none',
+                            color: 'var(--primary)',
+                            padding: '3px 6px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Volume2 size={12} />
+                        </button>
+                        <button 
+                          onClick={() => openReportModal(msg)}
+                          title={nativeLanguage === 'es' ? 'Reportar respuesta' : 'Report response'}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            color: 'var(--danger)',
+                            padding: '3px 6px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            fontSize: '10px',
+                            fontWeight: '600'
+                          }}
+                        >
+                          <Flag size={10} />
+                          <span>{nativeLanguage === 'es' ? 'Reportar' : 'Report'}</span>
+                        </button>
+                      </div>
                     )}
                     <div style={{ whiteSpace: 'pre-wrap' }}>{renderMessageContent(msg.content)}</div>
                   </div>
@@ -1316,6 +1390,183 @@ export const ChatModule: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Report AI Content Modal */}
+      {reportingMsg && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '16px'
+        }}>
+          <div className="glass-card animate-scale-up" style={{
+            width: '100%',
+            maxWidth: '440px',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: '16px',
+            padding: '20px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)' }}>
+                <Flag size={18} />
+                <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0, color: 'var(--text-primary)' }}>
+                  {nativeLanguage === 'es' ? 'Reportar Respuesta del Tutor' : 'Report AI Response'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setReportingMsg(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {reportSuccess ? (
+              <div style={{
+                background: 'var(--success-glow)',
+                border: '1px solid var(--success)',
+                color: 'var(--success)',
+                padding: '14px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                textAlign: 'center',
+                fontWeight: '600'
+              }}>
+                <CheckCircle2 size={24} style={{ margin: '0 auto 8px auto', display: 'block' }} />
+                {reportSuccess}
+              </div>
+            ) : (
+              <form onSubmit={handleSendReport} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+                  {nativeLanguage === 'es' 
+                    ? 'Ayúdanos a mantener Spanglish seguro y preciso. Reporta contenido ofensivo, dañino o incorrecto.'
+                    : 'Help us keep Spanglish safe and accurate. Report inappropriate, harmful, or incorrect content.'}
+                </p>
+
+                <div style={{
+                  background: 'var(--bg-app)',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  maxHeight: '100px',
+                  overflowY: 'auto',
+                  fontSize: '11.5px',
+                  color: 'var(--text-secondary)',
+                  fontStyle: 'italic'
+                }}>
+                  "{reportingMsg.content.substring(0, 180)}{reportingMsg.content.length > 180 ? '...' : ''}"
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                    {nativeLanguage === 'es' ? 'Motivo del reporte:' : 'Reason for report:'}
+                  </label>
+                  <select
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-app)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <option value="Offensive or inappropriate content">
+                      {nativeLanguage === 'es' ? 'Contenido ofensivo o inapropiado' : 'Offensive or inappropriate content'}
+                    </option>
+                    <option value="Factually incorrect or broken response">
+                      {nativeLanguage === 'es' ? 'Respuesta incorrecta o rota' : 'Factually incorrect or broken response'}
+                    </option>
+                    <option value="Harmful or unsafe content">
+                      {nativeLanguage === 'es' ? 'Contenido perjudicial o no seguro' : 'Harmful or unsafe content'}
+                    </option>
+                    <option value="Other issue">
+                      {nativeLanguage === 'es' ? 'Otro problema' : 'Other issue'}
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                    {nativeLanguage === 'es' ? 'Detalles adicionales (opcional):' : 'Additional details (optional):'}
+                  </label>
+                  <textarea
+                    value={reportComments}
+                    onChange={(e) => setReportComments(e.target.value)}
+                    placeholder={nativeLanguage === 'es' ? 'Escribe más detalles si lo deseas...' : 'Provide any extra context...'}
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-app)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      resize: 'none'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setReportingMsg(null)}
+                    style={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {nativeLanguage === 'es' ? 'Cancelar' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingReport}
+                    style={{
+                      background: 'var(--danger)',
+                      border: 'none',
+                      color: 'white',
+                      fontWeight: '700',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      opacity: submittingReport ? 0.7 : 1
+                    }}
+                  >
+                    <Flag size={12} />
+                    <span>{submittingReport ? (nativeLanguage === 'es' ? 'Enviando...' : 'Submitting...') : (nativeLanguage === 'es' ? 'Enviar Reporte' : 'Submit Report')}</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

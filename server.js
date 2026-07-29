@@ -1783,6 +1783,150 @@ app.post('/api/auth/welcome-email', async (req, res) => {
   }
 });
 
+// POST /api/report-ai-content
+app.post('/api/report-ai-content', async (req, res) => {
+  const { aiResponse, userText, reportReason, userComments, userEmail } = req.body;
+  if (!aiResponse) {
+    return res.status(400).json({ error: 'AI response content is required.' });
+  }
+
+  const timestamp = new Date().toISOString();
+  const reporter = userEmail || 'Anonymous User';
+  const reason = reportReason || 'Inappropriate or broken response';
+
+  console.log(`[AI Tutor Content Report Received]`, {
+    timestamp,
+    reporter,
+    reason,
+    userComments,
+    userText,
+    aiResponse
+  });
+
+  const plunkApiKey = process.env.PLUNK_API_KEY;
+  if (!plunkApiKey) {
+    console.log(`[Email Service Mock] Report AI content requested. Plunk key not set.`);
+    return res.json({ success: true, message: 'Report recorded locally (Plunk key not set).' });
+  }
+
+  try {
+    const comments = userComments ? `<p style="margin-top:8px;"><strong>Additional Comments:</strong> ${userComments}</p>` : '';
+    const userPromptSection = userText ? `<div style="background:#1f2937; padding:12px; border-radius:8px; margin-bottom:12px;"><strong style="color:#9ca3af;">User Prompt:</strong><p style="margin:4px 0 0 0; color:#e5e7eb;">${userText}</p></div>` : '';
+
+    const emailBody = `
+      <div style="font-family: sans-serif; background: #0b0f19; color: #f1f5f9; padding: 32px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
+        <div style="border-bottom: 1px solid #374151; padding-bottom: 16px; margin-bottom: 20px;">
+          <h2 style="color: #ef4444; margin: 0; font-size: 22px;">🚩 AI Tutor Content Report</h2>
+          <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">Reported by: ${reporter} • ${timestamp}</p>
+        </div>
+        <div style="background: #111827; padding: 16px; border-radius: 12px; border: 1px solid #374151;">
+          <p style="margin-top:0; color:#f87171; font-weight:bold;">Reason: ${reason}</p>
+          ${comments}
+          ${userPromptSection}
+          <div style="background:#1f2937; padding:12px; border-radius:8px; border-left:4px solid #ef4444;">
+            <strong style="color:#9ca3af;">Flagged AI Response:</strong>
+            <p style="margin:4px 0 0 0; color:#f3f4f6; white-space:pre-wrap;">${aiResponse}</p>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #64748b;">
+          Spanglish App Generative AI Safety Compliance Report
+        </div>
+      </div>
+    `;
+
+    const response = await fetch('https://api.useplunk.com/v1/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${plunkApiKey}`
+      },
+      body: JSON.stringify({
+        to: 'ae@levmo.co',
+        subject: `[AI Tutor Report] ${reason}`,
+        body: emailBody
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[Plunk Send Error ${response.status}]:`, errText);
+    }
+
+    res.json({ success: true, message: 'AI report sent successfully.' });
+  } catch (err) {
+    console.error('[Email Service] Error in AI report endpoint:', err.message);
+    res.json({ success: true, message: 'Report recorded (email delivery pending).' });
+  }
+});
+
+// POST /api/feedback
+app.post('/api/feedback', async (req, res) => {
+  const { category, message, userEmail } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: 'Feedback message is required.' });
+  }
+
+  const timestamp = new Date().toISOString();
+  const sender = userEmail || 'Anonymous User';
+  const fbCategory = category || 'General Feedback';
+
+  console.log(`[User Feedback Received]`, {
+    timestamp,
+    sender,
+    category: fbCategory,
+    message
+  });
+
+  const plunkApiKey = process.env.PLUNK_API_KEY;
+  if (!plunkApiKey) {
+    console.log(`[Email Service Mock] Feedback received. Plunk key not set.`);
+    return res.json({ success: true, message: 'Feedback recorded locally (Plunk key not set).' });
+  }
+
+  try {
+    const emailBody = `
+      <div style="font-family: sans-serif; background: #0b0f19; color: #f1f5f9; padding: 32px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
+        <div style="border-bottom: 1px solid #374151; padding-bottom: 16px; margin-bottom: 20px;">
+          <h2 style="color: #8b5cf6; margin: 0; font-size: 22px;">💬 New User Feedback Received</h2>
+          <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">From: ${sender} • ${timestamp}</p>
+        </div>
+        <div style="background: #111827; padding: 16px; border-radius: 12px; border: 1px solid #374151;">
+          <p style="margin-top:0; color:#a78bfa; font-weight:bold;">Category: ${fbCategory}</p>
+          <div style="background:#1f2937; padding:14px; border-radius:8px; margin-top:8px;">
+            <p style="margin:0; color:#f3f4f6; white-space:pre-wrap; line-height:1.5;">${message}</p>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #64748b;">
+          Spanglish App User Feedback
+        </div>
+      </div>
+    `;
+
+    const response = await fetch('https://api.useplunk.com/v1/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${plunkApiKey}`
+      },
+      body: JSON.stringify({
+        to: 'ae@levmo.co',
+        subject: `[Spanglish Feedback] ${fbCategory}`,
+        body: emailBody
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[Plunk Send Error ${response.status}]:`, errText);
+    }
+
+    res.json({ success: true, message: 'Feedback sent successfully.' });
+  } catch (err) {
+    console.error('[Email Service] Error in feedback endpoint:', err.message);
+    res.json({ success: true, message: 'Feedback recorded (email delivery pending).' });
+  }
+});
+
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`Spanglish Backend Proxy running on port ${PORT}`);

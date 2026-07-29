@@ -3,7 +3,8 @@ import { useApp } from '../context/AppContext';
 import type { VocabWord } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
 import { Auth } from './Auth';
-import { Trash2, RotateCcw, Volume2, Award, BookOpen, Mic, RefreshCw, Cloud, LogOut } from 'lucide-react';
+import { Trash2, RotateCcw, Volume2, Award, BookOpen, Mic, RefreshCw, Cloud, LogOut, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
+import { getApiUrl } from '../utils/api';
 
 export const SettingsModule: React.FC = () => {
   const {
@@ -21,6 +22,48 @@ export const SettingsModule: React.FC = () => {
   } = useApp();
 
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const [feedbackCategory, setFeedbackCategory] = useState('General Feedback');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackEmail, setFeedbackEmail] = useState(user?.email || '');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (user?.email && !feedbackEmail) {
+      setFeedbackEmail(user.email);
+    }
+  }, [user]);
+
+  const handleSendFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedbackMessage.trim()) return;
+    setSubmittingFeedback(true);
+    setFeedbackSuccess(null);
+    try {
+      const res = await fetch(getApiUrl('api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: feedbackCategory,
+          message: feedbackMessage.trim(),
+          userEmail: feedbackEmail.trim() || user?.email || ''
+        })
+      });
+      if (res.ok) {
+        setFeedbackSuccess(nativeLanguage === 'es' ? '¡Muchas gracias por tus comentarios!' : 'Thank you so much for your feedback!');
+        setFeedbackMessage('');
+        setTimeout(() => setFeedbackSuccess(null), 3500);
+      } else {
+        alert('Failed to send feedback. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error submitting feedback:', err);
+      alert('Error sending feedback.');
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
 
   const speakVocab = (word: string) => {
     const targetLang = nativeLanguage === 'en' ? 'es' : 'en';
@@ -40,12 +83,143 @@ export const SettingsModule: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '22px', fontWeight: '800' }}>
-            {nativeLanguage === 'es' ? 'Tu Progreso' : 'Your Progress'}
+            {nativeLanguage === 'es' ? 'Tu Progreso y Ajustes' : 'Your Progress & Settings'}
           </h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            {nativeLanguage === 'es' ? 'Revisa tus estadísticas y vocabulario' : 'Review your learning stats & vocabulary'}
+            {nativeLanguage === 'es' ? 'Revisa tus estadísticas, ajusta tu nivel y envía comentarios' : 'Review your stats, adjust preferences, or send feedback'}
           </p>
         </div>
+      </div>
+
+      {/* General Feedback Form */}
+      <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(139, 92, 246, 0.15)', color: 'var(--primary)' }}>
+            <MessageSquare size={16} />
+          </div>
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: 'var(--text-primary)' }}>
+              💬 {nativeLanguage === 'es' ? 'Enviar Comentarios' : 'App Feedback'}
+            </h3>
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+              {nativeLanguage === 'es' ? 'Envía tus comentarios o sugerencias directamente al equipo.' : 'Share your ideas, suggestions, or issues directly with us.'}
+            </p>
+          </div>
+        </div>
+
+        {feedbackSuccess ? (
+          <div style={{
+            background: 'var(--success-glow)',
+            border: '1px solid var(--success)',
+            color: 'var(--success)',
+            padding: '12px',
+            borderRadius: '10px',
+            fontSize: '12px',
+            textAlign: 'center',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px'
+          }}>
+            <CheckCircle2 size={16} />
+            <span>{feedbackSuccess}</span>
+          </div>
+        ) : (
+          <form onSubmit={handleSendFeedback} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                {nativeLanguage === 'es' ? 'Categoría' : 'Category'}
+              </label>
+              <select
+                value={feedbackCategory}
+                onChange={(e) => setFeedbackCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-app)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px'
+                }}
+              >
+                <option value="General Feedback">{nativeLanguage === 'es' ? 'Comentarios Generales' : 'General Feedback'}</option>
+                <option value="Bug Report">{nativeLanguage === 'es' ? 'Reporte de Error / Bug' : 'Bug Report'}</option>
+                <option value="Feature Request">{nativeLanguage === 'es' ? 'Sugerencia de Función' : 'Feature Request'}</option>
+                <option value="Content Suggestion">{nativeLanguage === 'es' ? 'Sugerencia de Contenido' : 'Content Suggestion'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                {nativeLanguage === 'es' ? 'Tu Correo (opcional)' : 'Your Email (optional)'}
+              </label>
+              <input
+                type="email"
+                value={feedbackEmail}
+                onChange={(e) => setFeedbackEmail(e.target.value)}
+                placeholder="name@example.co"
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-app)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px'
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                {nativeLanguage === 'es' ? 'Mensaje' : 'Message'}
+              </label>
+              <textarea
+                value={feedbackMessage}
+                onChange={(e) => setFeedbackMessage(e.target.value)}
+                placeholder={nativeLanguage === 'es' ? 'Escribe aquí tus comentarios...' : 'Tell us what you think or what we can improve...'}
+                rows={3}
+                required
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-app)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  resize: 'none'
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={submittingFeedback || !feedbackMessage.trim()}
+              style={{
+                background: 'var(--primary-gradient)',
+                border: 'none',
+                color: 'white',
+                fontWeight: '700',
+                fontSize: '12px',
+                padding: '9px 16px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                opacity: (submittingFeedback || !feedbackMessage.trim()) ? 0.6 : 1,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Send size={13} />
+              <span>{submittingFeedback ? (nativeLanguage === 'es' ? 'Enviando...' : 'Sending...') : (nativeLanguage === 'es' ? 'Enviar Comentarios' : 'Submit Feedback')}</span>
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Cloud Sync & Auth Banner */}

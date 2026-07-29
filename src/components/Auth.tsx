@@ -97,8 +97,13 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
     setSuccessMsg(null);
 
     try {
-      // Use clean origin for reset redirect link
-      const redirectUrl = window.location.origin;
+      // Use production site URL for reset redirect link so mobile email links work properly
+      const capacitor = (window as any).Capacitor;
+      const isNative = capacitor && capacitor.isNativePlatform && capacitor.isNativePlatform();
+      const redirectUrl = isNative || window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+        ? 'https://spanglish-two.vercel.app'
+        : window.location.origin;
+
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: redirectUrl
       });
