@@ -101,7 +101,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
       const capacitor = (window as any).Capacitor;
       const isNative = capacitor && capacitor.isNativePlatform && capacitor.isNativePlatform();
       const redirectUrl = isNative || window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-        ? 'https://learnspanglish.com'
+        ? 'https://spanglish-two.vercel.app'
         : window.location.origin;
 
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
