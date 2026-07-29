@@ -1783,9 +1783,9 @@ app.post('/api/auth/welcome-email', async (req, res) => {
   }
 });
 
-// POST /api/report-ai-content
-app.post(['/api/report-ai-content', '/report-ai-content'], async (req, res) => {
-  const { aiResponse, userText, reportReason, userComments, userEmail } = req.body;
+// AI Tutor Report Content Handler
+const handleReportAiContent = async (req, res) => {
+  const { aiResponse, userText, reportReason, userComments, userEmail } = req.body || {};
   if (!aiResponse) {
     return res.status(400).json({ error: 'AI response content is required.' });
   }
@@ -1857,11 +1857,14 @@ app.post(['/api/report-ai-content', '/report-ai-content'], async (req, res) => {
     console.error('[Email Service] Error in AI report endpoint:', err.message);
     res.json({ success: true, message: 'Report recorded (email delivery pending).' });
   }
-});
+};
 
-// POST /api/feedback
-app.post(['/api/feedback', '/feedback'], async (req, res) => {
-  const { category, message, userEmail } = req.body;
+app.post('/api/report-ai-content', handleReportAiContent);
+app.post('/report-ai-content', handleReportAiContent);
+
+// General User Feedback Handler
+const handleUserFeedback = async (req, res) => {
+  const { category, message, userEmail } = req.body || {};
   if (!message) {
     return res.status(400).json({ error: 'Feedback message is required.' });
   }
@@ -1925,7 +1928,10 @@ app.post(['/api/feedback', '/feedback'], async (req, res) => {
     console.error('[Email Service] Error in feedback endpoint:', err.message);
     res.json({ success: true, message: 'Feedback recorded (email delivery pending).' });
   }
-});
+};
+
+app.post('/api/feedback', handleUserFeedback);
+app.post('/feedback', handleUserFeedback);
 
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
