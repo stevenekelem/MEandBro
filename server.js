@@ -244,6 +244,34 @@ function getMockOfflinePhrases(targetLanguage, level, previousPhrase) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+// Endpoint to handle user AI content reports
+app.post('/api/report-ai-content', async (req, res) => {
+  const { aiResponse, userText, reportReason, userComments, userEmail } = req.body;
+  console.log(`[AI Content Report] Received report:`, {
+    reason: reportReason,
+    userEmail: userEmail || 'anonymous',
+    userText,
+    aiResponse: aiResponse?.substring(0, 100),
+    comments: userComments
+  });
+
+  if (supabase) {
+    try {
+      await supabase.from('ai_content_reports').insert({
+        ai_response: aiResponse,
+        user_text: userText,
+        report_reason: reportReason,
+        user_comments: userComments,
+        user_email: userEmail
+      });
+    } catch (err) {
+      console.warn('[AI Content Report] Supabase insert warning:', err.message);
+    }
+  }
+
+  res.json({ success: true, message: 'Report received and recorded for safety review.' });
+});
+
 // 1. LLM Chat Tutor Endpoint
 app.post('/api/tutor', async (req, res) => {
   const { message, history = [], nativeLanguage = 'en', level = 'intermediate', concept } = req.body;
