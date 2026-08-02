@@ -22,6 +22,9 @@ if (supabaseUrl && supabaseKey) {
   console.warn('Supabase URL or Key is missing. Database operations will fail.');
 }
 
+const app = express();
+const PORT = process.env.PORT || 3001;
+
 // Configure CORS to support learnspanglish.com, Vercel subdomains, and Capacitor mobile clients
 const allowedOrigins = [
   'https://app.learnspanglish.com',
