@@ -122,26 +122,39 @@ _Hola_
 }
 
 // Helpers for Mock fallbacks when Gemini is not initialized or fails
-function getMockTutorResponse(nativeLanguage, level) {
-  let reply = '';
+function getMockTutorResponse(nativeLanguage, level, userMessage = '') {
+  const cleanMsg = userMessage.trim().toLowerCase();
+  const targetLangName = nativeLanguage === 'en' ? 'Spanish' : 'English';
+  
+  if (cleanMsg.includes('hola') || cleanMsg.includes('hello') || cleanMsg.includes('hi') || cleanMsg.includes('buenas')) {
+    return nativeLanguage === 'en'
+      ? `¡Hola! Welcome to your Spanish lesson. How can I help you practice today? We can practice conversation, grammar, or vocabulary!`
+      : `Hello! Welcome to your English lesson. What would you like to practice today?`;
+  }
+  
+  if (cleanMsg.includes('gracias') || cleanMsg.includes('thank')) {
+    return nativeLanguage === 'en'
+      ? `¡De nada! (You're welcome!). Keep up the fantastic effort!`
+      : `You are very welcome! Keep up the great work!`;
+  }
+
   if (nativeLanguage === 'en') { // Learning Spanish
     if (level === 'basic') {
-      reply = `¡Hola! That is a great start. In Spanish, we say __"¿Cómo estás?"__ to ask "How are you?".\n\nTry repeating after me:\n\n__¿Cómo estás?__\n_How are you?_\n\nKeep going! What other basic phrases would you like to learn today?`;
+      return `¡Muy bien! When talking about "${userMessage || 'this topic'}", remember that Spanish nouns have gender.\n\n__For example:__\n_El libro_ (The book - masculine)\n_La mesa_ (The table - feminine)\n\nWhat other words would you like to practice?`;
     } else if (level === 'intermediate') {
-      reply = `¡Qué bien que sigas practicando! Tu frase está muy bien estructurada, pero una forma más natural de decirlo sería:\n\n_"Me gustaría aprender más vocabulario"_\n_I would like to learn more vocabulary_\n\n¿De qué tema te gustaría hablar hoy? Podemos hablar de viajes (travel), comida (food), o pasatiempos (hobbies).`;
+      return `¡Qué buen punto! Respecto a "${userMessage}", una forma muy natural de expresarlo en español es:\n\n__"Me alegra hablar de esto contigo"__\n_I am glad to talk about this with you_\n\n¿Quieres que practiquemos más oraciones similares?`;
     } else {
-      reply = `Es un placer conversar contigo. Tu nivel de fluidez es excelente. Analizando tu planteamiento, observo que has dominado el uso del subjuntivo. Para sonar aún más nativo, podrías emplear el modismo _"echar de menos"_ en lugar de _"extrañar"_ en contextos informales. \n\n¿Te interesaría debatir sobre las diferencias culturales en las jornadas laborales entre España y los países anglosajones?`;
+      return `Excelente observación. Para abordar "${userMessage}" con la máxima fluidez, recuerda emplear el subjuntivo en oraciones subordinadas. \n\n¿Te gustaría profundizar en este aspecto gramatical o practicar conversación avanzada sobre el tema?`;
     }
   } else { // Learning English
     if (level === 'basic') {
-      reply = `Hello! Welcome! In English, we say:\n\n__"How are you?"__\n_¿Cómo estás?_\n\nLet's practice a simple sentence:\n\n__"My name is..."__\n_Mi nombre es..._\n\nCan you tell me your name?`;
+      return `Great job! Speaking about "${userMessage || 'this topic'}", a simple and useful phrase is:\n\n__"I want to practice more"__\n_Quiero practicar más_\n\nCan you try creating a sentence with that?`;
     } else if (level === 'intermediate') {
-      reply = `Hi there! I understood you perfectly. To make your English sound more natural, try saying:\n\n_"I have been studying English for two years"_\n_He estado estudiando inglés por dos años_\n\ninstead of "I study English since two years".\n\nWould you like to practice talking about your weekend plans, or do you have a specific grammar question?`;
+      return `That's a very good sentence! Regarding "${userMessage}", in English we often say:\n\n__"That sounds like a great idea"__\n_Eso suena como una gran idea_\n\nWould you like to try using this phrase in a sentence?`;
     } else {
-      reply = `Terrific to meet you. Your sentence structure is highly sophisticated. To take your communication skills to the absolute peak, let's look at register. In business settings, we prefer:\n\n_"I would be delighted to assist you"_\n_Estaría encantado de ayudarle_\n\nover "I'm happy to help you out."\n\nShall we discuss recent global economic trends, or is there a classic piece of literature you'd like to dissect today?`;
+      return `Your expression is very clear. Regarding "${userMessage}", to make your phrase sound even more polished, consider using idiomatic expressions.\n\nShall we continue discussing this topic in detail?`;
     }
   }
-  return reply;
 }
 
 const phoneticDatabase = {
@@ -371,7 +384,7 @@ app.post(['/api/tutor', '/tutor'], async (req, res) => {
       parts: [{ text: item.content || item.parts?.[0]?.text || '' }]
     }));
 
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-pro'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     let responseText = '';
     let success = false;
     let lastError = null;
@@ -410,7 +423,7 @@ app.post(['/api/tutor', '/tutor'], async (req, res) => {
     res.json({ text: responseText });
   } catch (error) {
     console.error('Gemini API Error in Tutor (falling back to Mock):', error?.message || error);
-    const reply = getMockTutorResponse(req.body?.nativeLanguage || 'en', req.body?.level || 'intermediate');
+    const reply = getMockTutorResponse(req.body?.nativeLanguage || 'en', req.body?.level || 'intermediate', req.body?.message || '');
     res.json({ text: `[Fallback Tutor] ${reply}` });
   }
 });
@@ -447,7 +460,7 @@ Only output valid JSON. Do not wrap in markdown code blocks.`;
 
     const prompt = `Target Phrase: "${targetPhrase}"\nUser Transcript: "${userTranscript}"\nTarget Language: "${targetLanguage}"`;
     
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-pro'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     let responseText = '';
     let success = false;
     let lastError = null;
