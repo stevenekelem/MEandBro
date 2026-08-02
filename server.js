@@ -302,24 +302,22 @@ app.post(['/api/report-ai-content', '/report-ai-content'], async (req, res) => {
 
 // 1. LLM Chat Tutor Endpoint
 app.post(['/api/tutor', '/tutor'], async (req, res) => {
-  const { message, history = [], nativeLanguage = 'en', level = 'intermediate', concept } = req.body;
-  const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
-
-  if (!message) {
-    return res.status(400).json({ error: 'Message content is required.' });
-  }
-
-  // 1a. Mock mode fallback if no API key is configured
-  if (!ai) {
-    console.log('[Mock Tutor] Processing query:', message);
-    return setTimeout(() => {
-      const reply = getMockTutorResponse(nativeLanguage, level);
-      res.json({ text: reply });
-    }, 800);
-  }
-
-  // 1b. Call Gemini API with optional RAG Context
   try {
+    const { message, history = [], nativeLanguage = 'en', level = 'intermediate', concept } = req.body || {};
+    const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
+
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message content is required.' });
+    }
+
+    // 1a. Mock mode fallback if no API key is configured
+    if (!ai) {
+      console.log('[Mock Tutor] Processing query:', message);
+      const reply = getMockTutorResponse(nativeLanguage, level);
+      return res.json({ text: reply });
+    }
+
+    // 1b. Call Gemini API with optional RAG Context
     let systemPrompt = getTutorSystemPrompt(nativeLanguage, targetLanguage, level);
     let ragContext = '';
 
@@ -331,22 +329,24 @@ app.post(['/api/tutor', '/tutor'], async (req, res) => {
         const embedResult = await embedModel.embedContent({
           content: { parts: [{ text: message }] }
         });
-        const queryEmbedding = embedResult.embedding.values;
+        const queryEmbedding = embedResult?.embedding?.values;
 
-        console.log(`[RAG] Searching vector database for matching curriculum chunks...`);
-        const { data: chunks, error: rpcError } = await supabase.rpc('match_curriculum_chunks', {
-          query_embedding: queryEmbedding,
-          match_threshold: 0.3,
-          match_count: 3
-        });
+        if (queryEmbedding) {
+          console.log(`[RAG] Searching vector database for matching curriculum chunks...`);
+          const { data: chunks, error: rpcError } = await supabase.rpc('match_curriculum_chunks', {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.3,
+            match_count: 3
+          });
 
-        if (rpcError) {
-          console.warn('[RAG] Supabase RPC failed:', rpcError.message);
-        } else if (chunks && chunks.length > 0) {
-          ragContext = chunks.map(c => `[From Curriculum Textbook: ${c.document_name}]\n${c.content}`).join('\n\n');
-          console.log(`[RAG] Successfully retrieved ${chunks.length} matching textbook chunks.`);
-        } else {
-          console.log('[RAG] No relevant textbook chunks found.');
+          if (rpcError) {
+            console.warn('[RAG] Supabase RPC failed:', rpcError.message);
+          } else if (chunks && chunks.length > 0) {
+            ragContext = chunks.map(c => `[From Curriculum Textbook: ${c.document_name}]\n${c.content}`).join('\n\n');
+            console.log(`[RAG] Successfully retrieved ${chunks.length} matching textbook chunks.`);
+          } else {
+            console.log('[RAG] No relevant textbook chunks found.');
+          }
         }
       } catch (ragErr) {
         console.warn('[RAG] Error performing curriculum search:', ragErr.message);
@@ -357,12 +357,13 @@ app.post(['/api/tutor', '/tutor'], async (req, res) => {
       systemPrompt += `\n\nHere is some relevant curriculum context from the student's Spanish/English learning textbooks. Use it to structure your explanations, introduce grammar rules, and reference the text content where appropriate:\n\n${ragContext}`;
     }
 
-    if (concept) {
-      systemPrompt += `\n\n[Active Lesson Focus]: The student is currently in a structured study session learning about "${concept.title}" (${concept.description}). Provide tailored guidance, explain the grammar rules, and give them targeted practice questions related to this topic.`;
+    if (concept && concept.title) {
+      systemPrompt += `\n\n[Active Lesson Focus]: The student is currently in a structured study session learning about "${concept.title}" (${concept.description || ''}). Provide tailored guidance, explain the grammar rules, and give them targeted practice questions related to this topic.`;
     }
 
-    // Format history for Gemini API.
-    const formattedHistory = history.map(item => ({
+    // Format history for Gemini API safely.
+    const safeHistory = Array.isArray(history) ? history : [];
+    const formattedHistory = safeHistory.map(item => ({
       role: item.role === 'user' ? 'user' : 'model',
       parts: [{ text: item.content || item.parts?.[0]?.text || '' }]
     }));
@@ -400,13 +401,13 @@ app.post(['/api/tutor', '/tutor'], async (req, res) => {
     }
 
     if (!success) {
-      throw lastError;
+      throw lastError || new Error('All Gemini model calls failed');
     }
 
     res.json({ text: responseText });
   } catch (error) {
-    console.error('Gemini API Error in Tutor (falling back to Mock):', error);
-    const reply = getMockTutorResponse(nativeLanguage, level);
+    console.error('Gemini API Error in Tutor (falling back to Mock):', error?.message || error);
+    const reply = getMockTutorResponse(req.body?.nativeLanguage || 'en', req.body?.level || 'intermediate');
     res.json({ text: `[Fallback Tutor] ${reply}` });
   }
 });
