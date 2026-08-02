@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.spanglish.app',
+  appId: 'com.learnspanglish.mobile',
   appName: 'Spanglish',
   webDir: 'dist',
   server: {

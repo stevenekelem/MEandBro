@@ -22,10 +22,30 @@ if (supabaseUrl && supabaseKey) {
   console.warn('Supabase URL or Key is missing. Database operations will fail.');
 }
 
-const app = express();
-const PORT = process.env.PORT || 3001;
+// Configure CORS to support learnspanglish.com, Vercel subdomains, and Capacitor mobile clients
+const allowedOrigins = [
+  'https://app.learnspanglish.com',
+  'https://learnspanglish.com',
+  'https://www.learnspanglish.com',
+  'https://spanglish-two.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost',
+  'https://localhost',
+  'capacitor://localhost'
+];
 
-app.use(cors());
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.learnspanglish.com')) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 app.use(express.json());
 
 // Initialize Gemini API client if a valid API key is present
