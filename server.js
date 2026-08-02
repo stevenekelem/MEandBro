@@ -48,6 +48,14 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Normalize Vercel serverless request path prefixes for Express API route matching
+app.use((req, res, next) => {
+  if (req.url && !req.url.startsWith('/api') && req.url !== '/') {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
+
 // Initialize Gemini API client if a valid API key is present
 const apiKey = process.env.GEMINI_API_KEY;
 let ai = null;
@@ -265,7 +273,7 @@ function getMockOfflinePhrases(targetLanguage, level, previousPhrase) {
 }
 
 // Endpoint to handle user AI content reports
-app.post('/api/report-ai-content', async (req, res) => {
+app.post(['/api/report-ai-content', '/report-ai-content'], async (req, res) => {
   const { aiResponse, userText, reportReason, userComments, userEmail } = req.body;
   console.log(`[AI Content Report] Received report:`, {
     reason: reportReason,
@@ -293,7 +301,7 @@ app.post('/api/report-ai-content', async (req, res) => {
 });
 
 // 1. LLM Chat Tutor Endpoint
-app.post('/api/tutor', async (req, res) => {
+app.post(['/api/tutor', '/tutor'], async (req, res) => {
   const { message, history = [], nativeLanguage = 'en', level = 'intermediate', concept } = req.body;
   const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
 
@@ -319,10 +327,9 @@ app.post('/api/tutor', async (req, res) => {
     if (supabase) {
       try {
         console.log(`[RAG] Generating embedding for message: "${message.substring(0, 30)}..."`);
-        const embedModel = ai.getGenerativeModel({ model: 'gemini-embedding-2' });
+        const embedModel = ai.getGenerativeModel({ model: 'text-embedding-004' });
         const embedResult = await embedModel.embedContent({
-          content: { parts: [{ text: message }] },
-          outputDimensionality: 768
+          content: { parts: [{ text: message }] }
         });
         const queryEmbedding = embedResult.embedding.values;
 
@@ -360,7 +367,7 @@ app.post('/api/tutor', async (req, res) => {
       parts: [{ text: item.content || item.parts?.[0]?.text || '' }]
     }));
 
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'];
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-pro'];
     let responseText = '';
     let success = false;
     let lastError = null;
@@ -405,7 +412,7 @@ app.post('/api/tutor', async (req, res) => {
 });
 
 // 2. Pronunciation Scorer Endpoint
-app.post('/api/pronounce', async (req, res) => {
+app.post(['/api/pronounce', '/pronounce'], async (req, res) => {
   const { targetPhrase, userTranscript, targetLanguage = 'es' } = req.body;
 
   if (!targetPhrase || !userTranscript) {
@@ -436,7 +443,7 @@ Only output valid JSON. Do not wrap in markdown code blocks.`;
 
     const prompt = `Target Phrase: "${targetPhrase}"\nUser Transcript: "${userTranscript}"\nTarget Language: "${targetLanguage}"`;
     
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'];
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-pro'];
     let responseText = '';
     let success = false;
     let lastError = null;
@@ -482,7 +489,7 @@ Only output valid JSON. Do not wrap in markdown code blocks.`;
 });
 
 // 2b. Dynamic Pronunciation Phrase Generator Endpoint
-app.post('/api/pronounce/generate', async (req, res) => {
+app.post(['/api/pronounce/generate', '/pronounce/generate'], async (req, res) => {
   const { targetLanguage = 'es', level = 'basic', previousPhrase = '' } = req.body;
   const targetName = targetLanguage === 'es' ? 'Spanish' : 'English';
   const nativeName = targetLanguage === 'es' ? 'English' : 'Spanish';
@@ -509,7 +516,7 @@ app.post('/api/pronounce/generate', async (req, res) => {
 
     const prompt = `Generate a new pronunciation practice phrase. Level: ${level}, Target Language: ${targetName}, Native Language: ${nativeName}. Avoid repeating this previous phrase if possible: "${previousPhrase}".`;
 
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-pro'];
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-pro'];
     let responseText = '';
     let success = false;
     let lastError = null;
@@ -653,7 +660,7 @@ function getLocalNewsFallback(nativeLanguage, level) {
 }
 
 // 3. News Synopsis Generator
-app.post('/api/news', async (req, res) => {
+app.post(['/api/news', '/news'], async (req, res) => {
   const { nativeLanguage = 'en', level = 'intermediate', refresh = false } = req.body;
   const targetLanguage = nativeLanguage === 'en' ? 'es' : 'en';
   const cacheKey = `${nativeLanguage}_${level}`;
