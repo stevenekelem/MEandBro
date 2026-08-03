@@ -1333,35 +1333,45 @@ const MOCK_BOOKS = [
     title: 'Don Quijote de la Mancha',
     author: 'Miguel de Cervantes',
     source_lang: 'es',
-    synopsis: 'Un hidalgo de la Mancha pierde la razón de tanto leer novelas de caballerías y decide lanzarse al mundo como caballero andante, buscando honor, batallas y amor cortesano.'
+    synopsis: 'Un hidalgo de la Mancha pierde la razón de tanto leer novelas de caballerías y decide lanzarse al mundo como caballero andante, buscando honor, batallas y amor cortesano.',
+    synopsis_es: 'Un hidalgo de la Mancha pierde la razón de tanto leer novelas de caballerías y decide lanzarse al mundo como caballero andante, buscando honor, batallas y amor cortesano.',
+    synopsis_en: 'A nobleman from La Mancha loses his sanity from reading chivalric romances and sets off into the world as a knight-errant, seeking honor, battles, and courtly love.'
   },
   {
     id: 'principito',
     title: 'El Principito',
     author: 'Antoine de Saint-Exupéry',
     source_lang: 'es',
-    synopsis: 'Un piloto varado en el desierto del Sahara entabla amistad con un pequeño y misterioso príncipe que proviene de un asteroide lejano y viaja por el cosmos buscando respuestas.'
+    synopsis: 'Un piloto varado en el desierto del Sahara entabla amistad con un pequeño y misterioso príncipe que proviene de un asteroide lejano y viaja por el cosmos buscando respuestas.',
+    synopsis_es: 'Un piloto varado en el desierto del Sahara entabla amistad con un pequeño y misterioso príncipe que proviene de un asteroide lejano y viaja por el cosmos buscando respuestas.',
+    synopsis_en: 'A pilot stranded in the Sahara Desert befriends a mysterious young prince hailing from a distant asteroid who travels the cosmos seeking answers.'
   },
   {
     id: 'vida_sueno',
     title: 'La Vida es Sueño',
     author: 'Pedro Calderón de la Barca',
     source_lang: 'es',
-    synopsis: 'Una obra filosófica clásica que gira en torno a Segismundo, príncipe de Polonia, encarcelado en una torre secreta desde su nacimiento por su propio padre debido a una profecía fatal.'
+    synopsis: 'Una obra filosófica clásica que gira en torno a Segismundo, príncipe de Polonia, encarcelado en una torre secreta desde su nacimiento por su propio padre debido a una profecía fatal.',
+    synopsis_es: 'Una obra filosófica clásica que gira en torno a Segismundo, príncipe de Polonia, encarcelado en una torre secreta desde su nacimiento por su propio padre debido a una profecía fatal.',
+    synopsis_en: 'A classic philosophical drama centering on Segismundo, Prince of Poland, imprisoned in a secret tower from birth by his own father due to a dire prophecy.'
   },
   {
     id: 'hamlet',
     title: 'Hamlet',
     author: 'William Shakespeare',
     source_lang: 'en',
-    synopsis: 'The ultimate tragedy of Prince Hamlet of Denmark, who is tasked by his father\'s ghost to avenge his murder by killing his uncle Claudius, who has usurped the throne.'
+    synopsis: 'The ultimate tragedy of Prince Hamlet of Denmark, who is tasked by his father\'s ghost to avenge his murder by killing his uncle Claudius, who has usurped the throne.',
+    synopsis_en: 'The ultimate tragedy of Prince Hamlet of Denmark, who is tasked by his father\'s ghost to avenge his murder by killing his uncle Claudius, who has usurped the throne.',
+    synopsis_es: 'La tragedia definitiva del príncipe Hamlet de Dinamarca, encomendado por el fantasma de su padre para vengar su asesinato matando a su tío Claudio, quien ha usurpado el trono.'
   },
   {
     id: 'pride_prejudice',
     title: 'Pride and Prejudice',
     author: 'Jane Austen',
     source_lang: 'en',
-    synopsis: 'A classic romantic novel charting the emotional development of Elizabeth Bennet, who learns the difference between superficial goodness and actual integrity.'
+    synopsis: 'A classic romantic novel charting the emotional development of Elizabeth Bennet, who learns the difference between superficial goodness and actual integrity.',
+    synopsis_en: 'A classic romantic novel charting the emotional development of Elizabeth Bennet, who learns the difference between superficial goodness and actual integrity.',
+    synopsis_es: 'Una novela romántica clásica que traza el desarrollo emocional de Elizabeth Bennet, quien aprende la diferencia entre la bondad superficial y la verdadera integridad.'
   }
 ];
 

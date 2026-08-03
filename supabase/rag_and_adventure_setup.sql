@@ -50,8 +50,14 @@ CREATE TABLE IF NOT EXISTS public.literature_books (
   author TEXT NOT NULL,
   source_lang TEXT CHECK (source_lang IN ('en', 'es')) NOT NULL,
   synopsis TEXT NOT NULL,
+  synopsis_en TEXT,
+  synopsis_es TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for existing instances
+ALTER TABLE public.literature_books ADD COLUMN IF NOT EXISTS synopsis_en TEXT;
+ALTER TABLE public.literature_books ADD COLUMN IF NOT EXISTS synopsis_es TEXT;
 
 -- Enable RLS for literature_books
 ALTER TABLE public.literature_books ENABLE ROW LEVEL SECURITY;

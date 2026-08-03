@@ -28,7 +28,7 @@ if (!apiKey) {
 const ai = new GoogleGenerativeAI(apiKey);
 
 // We try models in order of capability/availability
-const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-pro'];
+const modelsToTry = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
 async function runGeminiJSON(systemPrompt, promptText) {
   let lastError = null;
@@ -57,28 +57,76 @@ async function runGeminiJSON(systemPrompt, promptText) {
 
 const LITERATURE_DIR = './literature_pdfs';
 
-function splitIntoChapters(text) {
+async function splitIntoChapters(text) {
   const cleanText = text.replace(/\r\n/g, '\n');
-  const lines = cleanText.split('\n');
   
+  // 1. AI Stage: Analyze TOC and book structure
+  console.log('Analyzing book structure and Table of Contents with Gemini...');
+  const structureSystemPrompt = `You are a literary structure analyst. Analyze text and output JSON.`;
+  const structurePrompt = `Analyze the beginning of this book text (which may contain front-matter, prefaces, or a Table of Contents).
+  Identify:
+  1. The primary structural term used for divisions (e.g., "Book", "Libro", "Chapter", "Capítulo", "Canto", "Jornada", "Act", "Acto", "Section", "Parte").
+  2. Whether a Table of Contents or Preface is present.
+  3. A short unique sentence or phrase (10-25 characters) from the text where the actual main story narrative begins (after any TOC, preface, or publisher notes).
+  
+  Return a JSON object:
+  {
+    "structural_term": "string (e.g. Book, Chapter, Canto, Jornada)",
+    "has_toc": true,
+    "narrative_start_phrase": "exact short text snippet where main story begins"
+  }
+
+  Only return JSON.
+
+  Text snippet:
+  ${cleanText.slice(0, 12000)}`;
+
+  let structureInfo = null;
+  try {
+    structureInfo = await runGeminiJSON(structureSystemPrompt, structurePrompt);
+    console.log(`Detected structural term: "${structureInfo.structural_term || 'Chapter'}", Has TOC: ${structureInfo.has_toc}`);
+  } catch (err) {
+    console.warn('AI structure analysis fallback:', err.message);
+  }
+
+  // Bypass front-matter / preface if start phrase is detected
+  let textToProcess = cleanText;
+  if (structureInfo && structureInfo.narrative_start_phrase) {
+    const startIdx = cleanText.indexOf(structureInfo.narrative_start_phrase);
+    if (startIdx > 0 && startIdx < 20000) {
+      console.log(`Bypassing front-matter/preface at character index ${startIdx}.`);
+      textToProcess = cleanText.slice(startIdx);
+    }
+  }
+
+  const lines = textToProcess.split('\n');
   const chapters = [];
-  let currentChapterTitle = 'Introduction';
+  let currentChapterTitle = `${structureInfo?.structural_term || 'Chapter'} 1`;
   let currentChapterText = '';
 
-  const chapterPattern = /^\s*(?:Chapter|Capítulo|Jornada|Sección|Section)\s+([IVXLCDM\d]+|[a-zA-Záéíóúñ\s]+)/i;
+  // 2. Expanded pattern matching Book, Libro, Chapter, Capítulo, Canto, Jornada, Act, Acto, Section, Sección, Part, Parte
+  const chapterPattern = /^\s*(?:Book|Libro|Chapter|Capítulo|Canto|Jornada|Act|Acto|Section|Sección|Part|Parte)\s+([IVXLCDM\d]+|[a-zA-Záéíóúñ\s]+)/i;
   const romanPattern = /^\s*([IVXLCDM]+)\s*$/i;
+  const prefacePattern = /^\s*(?:Preface|Prólogo|Introduction|Introducción|Foreword|Table of Contents|Tabla de Contenidos|Índice|Copyright|Publisher)/i;
 
   for (const line of lines) {
-    const isChapterLine = line.match(chapterPattern) || line.match(romanPattern);
+    const trimmed = line.trim();
+
+    // Skip preface or TOC lines if they appear at the start of processing
+    if (prefacePattern.test(trimmed) && trimmed.length < 60 && currentChapterText.length < 500) {
+      continue;
+    }
+
+    const isChapterLine = trimmed.match(chapterPattern) || trimmed.match(romanPattern);
     
-    if (isChapterLine && line.trim().length < 60) {
-      if (currentChapterText.trim().length > 100) {
+    if (isChapterLine && trimmed.length < 60) {
+      if (currentChapterText.trim().length > 300) {
         chapters.push({
           title: currentChapterTitle,
           text: currentChapterText.trim()
         });
       }
-      currentChapterTitle = line.trim();
+      currentChapterTitle = trimmed;
       currentChapterText = '';
     } else {
       currentChapterText += line + '\n';
@@ -86,7 +134,7 @@ function splitIntoChapters(text) {
   }
 
   // Add the last chapter
-  if (currentChapterText.trim().length > 100) {
+  if (currentChapterText.trim().length > 300) {
     chapters.push({
       title: currentChapterTitle,
       text: currentChapterText.trim()
@@ -95,15 +143,15 @@ function splitIntoChapters(text) {
 
   // Fallback: chunk by 15000 characters if no chapters detected
   if (chapters.length <= 1) {
-    console.log('No chapter markers detected. Chunking text by characters (fallback)...');
+    console.log('No distinct chapter markers detected. Chunking text by characters (fallback)...');
     const chunkSize = 15000;
     const fallbackChapters = [];
     let index = 0;
     let chapterNum = 1;
-    while (index < cleanText.length) {
+    while (index < textToProcess.length) {
       fallbackChapters.push({
-        title: `Chapter ${chapterNum++}`,
-        text: cleanText.slice(index, index + chunkSize).trim()
+        title: `${structureInfo?.structural_term || 'Chapter'} ${chapterNum++}`,
+        text: textToProcess.slice(index, index + chunkSize).trim()
       });
       index += chunkSize;
     }
@@ -124,7 +172,7 @@ async function processLiteraturePdf(filePath) {
   
   console.log(`Successfully read PDF. Text length: ${pdfData.text.length} chars.`);
   
-  // 1. Detect Metadata
+  // 1. Detect Metadata (Dual Language Synopses)
   console.log('Analyzing book metadata with Gemini...');
   const metadataSystemPrompt = `You are a book cataloger. Analyze the text and output book metadata in JSON format.`;
   const metadataPrompt = `Analyze the following text from the start of a book and return a JSON object with:
@@ -132,7 +180,8 @@ async function processLiteraturePdf(filePath) {
     "title": "Title of the book",
     "author": "Author of the book",
     "source_lang": "es" or "en" (the language of the text),
-    "synopsis": "A general synopsis of the whole book (3-4 sentences, in English if source_lang is 'es', in Spanish if source_lang is 'en')"
+    "synopsis_en": "A general synopsis of the whole book (3-4 sentences) written in English.",
+    "synopsis_es": "Una sinopsis general de todo el libro (3-4 frases) escrita en español."
   }
   
   Only return JSON.
@@ -165,7 +214,9 @@ async function processLiteraturePdf(filePath) {
         title: metadata.title,
         author: metadata.author,
         source_lang: metadata.source_lang,
-        synopsis: metadata.synopsis
+        synopsis: metadata.synopsis_en || metadata.synopsis_es || '',
+        synopsis_en: metadata.synopsis_en || '',
+        synopsis_es: metadata.synopsis_es || ''
       })
       .select('id')
       .single();
@@ -176,7 +227,7 @@ async function processLiteraturePdf(filePath) {
 
   // 2. Segment into Chapters
   console.log('Segmenting book into chapters...');
-  const chapters = splitIntoChapters(pdfData.text);
+  const chapters = await splitIntoChapters(pdfData.text);
   console.log(`Found ${chapters.length} chapters.`);
 
   // 3. Process each chapter
