@@ -7,12 +7,13 @@ import { Mail, Lock, UserPlus, LogIn, AlertCircle, CheckCircle2, X, Eye, EyeOff,
 interface AuthProps {
   onClose?: () => void;
   onAuthSuccess?: () => void;
+  initialMode?: 'login' | 'signup';
 }
 
-export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess }) => {
+export const Auth: React.FC<AuthProps> = ({ onClose, onAuthSuccess, initialMode }) => {
   const { isPasswordRecovery, setIsPasswordRecovery } = useApp();
   
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
   const [isResetPassword, setIsResetPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

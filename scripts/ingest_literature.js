@@ -231,11 +231,6 @@ async function processLiteraturePdf(filePath) {
   console.log(`Found ${chapters.length} chapters.`);
 
   // 3. Process each chapter
-  const targetLang = metadata.source_lang;
-  const nativeLang = targetLang === 'es' ? 'en' : 'es';
-  const targetName = targetLang === 'es' ? 'Spanish' : 'English';
-  const nativeName = nativeLang === 'es' ? 'Spanish' : 'English';
-
   for (let i = 0; i < chapters.length; i++) {
     const chapterNum = i + 1;
     const chapter = chapters[i];
@@ -255,27 +250,44 @@ async function processLiteraturePdf(filePath) {
       continue;
     }
 
-    // Call Gemini to generate level-adapted details and extract key sentences
-    const chapterSystemPrompt = `You are an expert bilingual language teacher. Analyze the chapter text and output JSON.`;
-    const chapterPrompt = `You are given the text of a chapter from a book.
-    Source Language of book: "${targetLang}" (${targetName}).
-    Student's Native Language: "${nativeLang}" (${nativeName}).
+    // Call Gemini to generate level-adapted dual-track details for both Spanish and English learners
+    const chapterSystemPrompt = `You are an expert bilingual literature professor and language teacher. Analyze the chapter text and output complete dual-track pedagogical JSON for both Spanish learners and English learners.`;
+    const chapterPrompt = `You are given text from a chapter of a book (Original Source Language: "${metadata.source_lang}").
     
-    Generate a JSON object matching this schema:
+    Generate a JSON object matching this EXACT schema:
     {
-      "synopsis": "A concise general narrative synopsis of the plot in this chapter (max 4 sentences, written in ${nativeName}).",
-      "summary_basic": "A very simple summary of the chapter (3-4 sentences) written in the target language (${targetName}) using basic vocabulary.",
-      "summary_intermediate": "A summary of the chapter (4-6 sentences) written in the target language (${targetName}) using intermediate vocabulary.",
-      "summary_advanced": "A sophisticated summary of the chapter (5-8 sentences) written in the target language (${targetName}) using advanced vocabulary, idioms, and complex grammar.",
-      "lines": [
-        {
-          "target": "An exact sentence or phrase extracted from the chapter text in ${targetName}.",
-          "native": "A natural translation of this sentence/phrase in ${nativeName}."
-        }
-      ]
+      "title_es": "Chapter title translated into Spanish (e.g. Capítulo ${chapterNum} / Título)",
+      "title_en": "Chapter title in English (e.g. Chapter ${chapterNum} / Title)",
+      
+      "synopsis_en": "Concise chapter plot summary (max 4 sentences) written in English for English native speakers.",
+      "synopsis_es": "Sinopsis concisa del argumento del capítulo (máx 4 frases) escrita en español para hispanohablantes.",
+      
+      "for_spanish_learners": {
+        "summary_basic": "Simple chapter summary (3-4 sentences) written in SPANISH using basic (A1-A2) vocabulary.",
+        "summary_intermediate": "Chapter summary (4-6 sentences) written in SPANISH using intermediate (B1-B2) vocabulary.",
+        "summary_advanced": "Rich chapter summary (5-8 sentences) written in SPANISH using advanced (C1-C2) literary vocabulary.",
+        "lines": [
+          {
+            "target": "Key sentence or phrase extracted/translated in SPANISH for student to read & listen to.",
+            "native": "Natural translation of this phrase in ENGLISH for student to understand."
+          }
+        ]
+      },
+
+      "for_english_learners": {
+        "summary_basic": "Simple chapter summary (3-4 sentences) written in ENGLISH using basic (A1-A2) vocabulary.",
+        "summary_intermediate": "Chapter summary (4-6 sentences) written in ENGLISH using intermediate (B1-B2) vocabulary.",
+        "summary_advanced": "Rich chapter summary (5-8 sentences) written in ENGLISH using advanced (C1-C2) literary vocabulary.",
+        "lines": [
+          {
+            "target": "Key sentence or phrase extracted/translated in ENGLISH for student to read & listen to.",
+            "native": "Natural translation of this phrase in SPANISH for student to understand."
+          }
+        ]
+      }
     }
     
-    Make sure you extract between 5 to 8 distinct sentences for the "lines" array.
+    Make sure you extract between 5 to 8 distinct sentences for BOTH "lines" arrays.
     Only return JSON.
     
     Chapter Text Excerpt:
@@ -284,23 +296,54 @@ async function processLiteraturePdf(filePath) {
     try {
       const chapterData = await runGeminiJSON(chapterSystemPrompt, chapterPrompt);
       
+      const linesEs = chapterData.for_spanish_learners?.lines || [];
+      const linesEn = chapterData.for_english_learners?.lines || [];
+      const dualLinesObj = { es: linesEs, en: linesEn };
+
+      const insertPayload = {
+        book_id: bookId,
+        chapter_number: chapterNum,
+        title: chapter.title || chapterData.title_en || `Chapter ${chapterNum}`,
+        title_es: chapterData.title_es || chapter.title,
+        title_en: chapterData.title_en || chapter.title,
+        synopsis: chapterData.synopsis_en || chapterData.synopsis_es || '',
+        synopsis_es: chapterData.synopsis_es || '',
+        synopsis_en: chapterData.synopsis_en || '',
+        summary_basic: chapterData.for_spanish_learners?.summary_basic || '',
+        summary_basic_es: chapterData.for_spanish_learners?.summary_basic || '',
+        summary_basic_en: chapterData.for_english_learners?.summary_basic || '',
+        summary_intermediate: chapterData.for_spanish_learners?.summary_intermediate || '',
+        summary_intermediate_es: chapterData.for_spanish_learners?.summary_intermediate || '',
+        summary_intermediate_en: chapterData.for_english_learners?.summary_intermediate || '',
+        summary_advanced: chapterData.for_spanish_learners?.summary_advanced || '',
+        summary_advanced_es: chapterData.for_spanish_learners?.summary_advanced || '',
+        summary_advanced_en: chapterData.for_english_learners?.summary_advanced || '',
+        lines: dualLinesObj,
+        lines_es: linesEs,
+        lines_en: linesEn
+      };
+
       const { error: insertChapErr } = await supabase
         .from('literature_chapters')
-        .insert({
-          book_id: bookId,
-          chapter_number: chapterNum,
-          title: chapter.title || `Chapter ${chapterNum}`,
-          synopsis: chapterData.synopsis,
-          summary_basic: chapterData.summary_basic,
-          summary_intermediate: chapterData.summary_intermediate,
-          summary_advanced: chapterData.summary_advanced,
-          lines: chapterData.lines
-        });
+        .insert(insertPayload);
 
       if (insertChapErr) {
-        throw insertChapErr;
+        // If column error occurs (due to missing optional columns), fallback to core insert payload
+        console.warn(`[Insert Notice] Full dual column insert had notice, trying core payload: ${insertChapErr.message}`);
+        const corePayload = {
+          book_id: bookId,
+          chapter_number: chapterNum,
+          title: chapter.title || chapterData.title_en || `Chapter ${chapterNum}`,
+          synopsis: chapterData.synopsis_en || chapterData.synopsis_es || '',
+          summary_basic: chapterData.for_spanish_learners?.summary_basic || '',
+          summary_intermediate: chapterData.for_spanish_learners?.summary_intermediate || '',
+          summary_advanced: chapterData.for_spanish_learners?.summary_advanced || '',
+          lines: dualLinesObj
+        };
+        const { error: fallbackErr } = await supabase.from('literature_chapters').insert(corePayload);
+        if (fallbackErr) throw fallbackErr;
       }
-      console.log(`Successfully ingested Chapter ${chapterNum}: "${chapter.title}"`);
+      console.log(`Successfully ingested Chapter ${chapterNum}: "${chapter.title}" with dual-language tracks.`);
     } catch (err) {
       console.error(`Error processing Chapter ${chapterNum}:`, err.message);
       // Wait a moment and retry to handle potential rate limits

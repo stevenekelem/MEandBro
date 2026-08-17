@@ -9,10 +9,19 @@ export const Onboarding: React.FC = () => {
   const [step, setStep] = useState(1);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showTourModal, setShowTourModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+
+  const openAuth = (mode: 'login' | 'signup' = 'login') => {
+    setAuthMode(mode);
+    setShowAuthModal(true);
+  };
 
   const handleNext = () => {
-    if (step < 3) {
-      setStep(prev => prev + 1);
+    if (step === 1) {
+      setStep(2);
+    } else if (step === 2) {
+      setStep(3);
+      setShowTourModal(true); // Automatically launch feature walkthrough after selecting language & level
     } else {
       setOnboarded(true);
     }
@@ -32,7 +41,13 @@ export const Onboarding: React.FC = () => {
       <AppWalkthroughModal 
         isOpen={showTourModal}
         onClose={() => setShowTourModal(false)}
-        onOpenAuth={() => setShowAuthModal(true)}
+        onSkip={() => {
+          setShowTourModal(false);
+        }}
+        onOpenAuth={(mode) => {
+          setShowTourModal(false);
+          openAuth(mode || 'signup');
+        }}
       />
 
       {/* Auth Modal Overlay */}
@@ -51,17 +66,18 @@ export const Onboarding: React.FC = () => {
           padding: '20px'
         }}>
           <Auth 
+            initialMode={authMode}
             onClose={() => setShowAuthModal(false)}
             onAuthSuccess={() => {
               setShowAuthModal(false);
-              setOnboarded(true); // Complete onboarding directly on successful sign in
+              setOnboarded(true); // Complete onboarding directly on successful auth
             }}
           />
         </div>
       )}
 
       {/* Upper Brand Section */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '10px', marginBottom: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '6px', marginBottom: '10px' }}>
         <button
           type="button"
           onClick={() => setShowTourModal(true)}
@@ -83,28 +99,44 @@ export const Onboarding: React.FC = () => {
           onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1.0)')}
         >
           <Compass size={13} />
-          <span>{nativeLanguage === 'es' ? 'Guía y Consejos' : 'Tour & Tips'}</span>
+          <span>{nativeLanguage === 'es' ? 'Recorrido' : 'App Tour'}</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setShowAuthModal(true)}
-          style={{
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid var(--border)',
-            padding: '6px 14px',
-            borderRadius: '12px',
-            color: 'var(--text-primary)',
-            fontSize: '12px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
-          onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-        >
-          {nativeLanguage === 'es' ? 'Iniciar Sesión' : 'Sign In'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => openAuth('signup')}
+            style={{
+              background: 'var(--primary-gradient)',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '10px',
+              color: 'white',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            {nativeLanguage === 'es' ? 'Crear Cuenta' : 'Create Account'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openAuth('login')}
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border)',
+              padding: '6px 12px',
+              borderRadius: '10px',
+              color: 'var(--text-primary)',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            {nativeLanguage === 'es' ? 'Ingresar' : 'Sign In'}
+          </button>
+        </div>
       </div>
 
       <div style={{ textAlign: 'center' }}>
@@ -236,17 +268,67 @@ export const Onboarding: React.FC = () => {
 
             <div style={{
               width: '100%',
-              background: 'var(--surface)',
-              borderRadius: '16px',
-              padding: '12px 16px',
-              fontSize: '12px',
-              color: 'var(--primary)',
-              fontWeight: '500',
-              border: '1px dashed var(--border-glow)'
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              marginTop: '4px'
             }}>
-              💡 {nativeLanguage === 'es' 
-                ? 'Consejo: Mantén presionado cualquier texto para traducirlo o escucharlo.' 
-                : 'Tip: Highlight any word in the app to translate or hear it spoken.'}
+              <button
+                type="button"
+                onClick={() => setShowTourModal(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--border-glow)',
+                  padding: '12px',
+                  borderRadius: '14px',
+                  color: 'var(--primary)',
+                  fontWeight: '700',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                <Compass size={16} />
+                <span>{nativeLanguage === 'es' ? 'Ver Recorrido Interactivo' : 'Take Interactive Feature Tour'}</span>
+              </button>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => openAuth('signup')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border)',
+                    padding: '12px',
+                    borderRadius: '14px',
+                    color: 'var(--text-primary)',
+                    fontWeight: '700',
+                    fontSize: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✨ {nativeLanguage === 'es' ? 'Crear Cuenta' : 'Create Account'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAuth('login')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border)',
+                    padding: '12px',
+                    borderRadius: '14px',
+                    color: 'var(--text-primary)',
+                    fontWeight: '600',
+                    fontSize: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔑 {nativeLanguage === 'es' ? 'Iniciar Sesión' : 'Sign In'}
+                </button>
+              </div>
             </div>
           </div>
         )}

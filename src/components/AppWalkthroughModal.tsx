@@ -15,13 +15,15 @@ import {
 interface AppWalkthroughModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenAuth?: () => void;
+  onOpenAuth?: (mode?: 'login' | 'signup') => void;
+  onSkip?: () => void;
 }
 
 export const AppWalkthroughModal: React.FC<AppWalkthroughModalProps> = ({ 
   isOpen, 
   onClose,
-  onOpenAuth 
+  onOpenAuth,
+  onSkip
 }) => {
   const { nativeLanguage } = useApp();
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -201,26 +203,47 @@ export const AppWalkthroughModal: React.FC<AppWalkthroughModalProps> = ({
             <span>{slide.badge}</span>
           </div>
 
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid var(--border)',
-              borderRadius: '50%',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseOver={e => (e.currentTarget.style.color = '#fff')}
-            onMouseOut={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-          >
-            <X size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => {
+                if (onSkip) onSkip();
+                else onClose();
+              }}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '4px 10px',
+                color: 'var(--text-secondary)',
+                fontSize: '11px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {nativeLanguage === 'es' ? 'Omitir' : 'Skip Tour'}
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid var(--border)',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={e => (e.currentTarget.style.color = '#fff')}
+              onMouseOut={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Slide Title & Description */}
@@ -356,23 +379,43 @@ export const AppWalkthroughModal: React.FC<AppWalkthroughModalProps> = ({
           </button>
 
           {onOpenAuth && (
-            <button
-              onClick={() => {
-                onClose();
-                onOpenAuth();
-              }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
-                fontSize: '12px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                textDecoration: 'underline'
-              }}
-            >
-              {nativeLanguage === 'es' ? 'Iniciar Sesión' : 'Sign In'}
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenAuth('login');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  textDecoration: 'underline'
+                }}
+              >
+                {nativeLanguage === 'es' ? 'Iniciar Sesión' : 'Sign In'}
+              </button>
+              <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>•</span>
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenAuth('signup');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  textDecoration: 'underline'
+                }}
+              >
+                {nativeLanguage === 'es' ? 'Crear Cuenta' : 'Create Account'}
+              </button>
+            </div>
           )}
 
           <button

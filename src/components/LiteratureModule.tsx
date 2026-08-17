@@ -7,6 +7,8 @@ import { getApiUrl } from '../utils/api';
 interface BookType {
   id: string;
   title: string;
+  title_es?: string;
+  title_en?: string;
   author: string;
   source_lang: 'es' | 'en';
   synopsis: string;
@@ -19,11 +21,26 @@ interface ChapterType {
   book_id: string;
   chapter_number: number;
   title: string;
+  title_es?: string;
+  title_en?: string;
   synopsis: string;
+  synopsis_es?: string;
+  synopsis_en?: string;
   summary_basic: string;
+  summary_basic_es?: string;
+  summary_basic_en?: string;
   summary_intermediate: string;
+  summary_intermediate_es?: string;
+  summary_intermediate_en?: string;
   summary_advanced: string;
-  lines: Array<{
+  summary_advanced_es?: string;
+  summary_advanced_en?: string;
+  lines: any;
+  lines_es?: Array<{
+    target: string;
+    native: string;
+  }>;
+  lines_en?: Array<{
     target: string;
     native: string;
   }>;
@@ -359,10 +376,10 @@ export const LiteratureModule: React.FC = () => {
         const response = await fetch(getApiUrl('/api/literature/books'));
         if (!response.ok) throw new Error('API failed');
         const data = await response.json();
-        setBooks(data.filter((b: BookType) => b.source_lang === targetLang));
+        setBooks(data);
       } catch (err) {
         console.warn('Using offline fallback books:', err);
-        setBooks(LOCAL_FALLBACK_BOOKS.filter(b => b.source_lang === targetLang));
+        setBooks(LOCAL_FALLBACK_BOOKS);
       } finally {
         setLoading(false);
       }
@@ -534,15 +551,74 @@ export const LiteratureModule: React.FC = () => {
   };
 
   const speakLine = (text: string) => {
-    if (!selectedBook) return;
-    speakTextWithBestVoice(text, selectedBook.source_lang, speechRate);
+    speakTextWithBestVoice(text, targetLang, speechRate);
   };
 
-  // Helper to get level summary text
+  // Helper to resolve book title based on learning track
+  const getBookTitle = (book: BookType) => {
+    if (targetLang === 'es') return book.title_es || book.title;
+    return book.title_en || book.title;
+  };
+
+  // Helper to resolve book synopsis (in learner's native language)
+  const getBookSynopsis = (book: BookType) => {
+    if (nativeLanguage === 'es') return book.synopsis_es || book.synopsis;
+    return book.synopsis_en || book.synopsis;
+  };
+
+  // Helper to resolve chapter title
+  const getChapterTitle = (chap: ChapterType) => {
+    if (targetLang === 'es') return chap.title_es || chap.title;
+    return chap.title_en || chap.title;
+  };
+
+  // Helper to resolve chapter plot synopsis (in learner's native language)
+  const getChapterSynopsis = (chap: ChapterType) => {
+    if (nativeLanguage === 'es') return chap.synopsis_es || chap.synopsis;
+    return chap.synopsis_en || chap.synopsis;
+  };
+
+  // Helper to resolve level summary text in target language
   const getLevelSummary = (chap: ChapterType) => {
-    if (level === 'basic') return chap.summary_basic;
-    if (level === 'intermediate') return chap.summary_intermediate;
-    return chap.summary_advanced;
+    const isEsTarget = targetLang === 'es';
+    if (level === 'basic') {
+      return (isEsTarget ? chap.summary_basic_es : chap.summary_basic_en) || chap.summary_basic;
+    }
+    if (level === 'intermediate') {
+      return (isEsTarget ? chap.summary_intermediate_es : chap.summary_intermediate_en) || chap.summary_intermediate;
+    }
+    return (isEsTarget ? chap.summary_advanced_es : chap.summary_advanced_en) || chap.summary_advanced;
+  };
+
+  // Helper to resolve key lines array with intelligent orientation adapter
+  const getChapterLines = (chap: ChapterType, bookSourceLang: 'es' | 'en' = 'es'): Array<{ target: string; native: string }> => {
+    const isEsTarget = targetLang === 'es';
+    
+    // 1. Direct dual-track array properties
+    if (isEsTarget && chap.lines_es && chap.lines_es.length > 0) return chap.lines_es;
+    if (!isEsTarget && chap.lines_en && chap.lines_en.length > 0) return chap.lines_en;
+
+    // 2. Dual-track JSON object in lines property
+    if (chap.lines && typeof chap.lines === 'object' && !Array.isArray(chap.lines)) {
+      if (isEsTarget && chap.lines.es && chap.lines.es.length > 0) return chap.lines.es;
+      if (!isEsTarget && chap.lines.en && chap.lines.en.length > 0) return chap.lines.en;
+    }
+
+    // 3. Fallback to array lines with orientation swap if needed
+    const rawLines: Array<{ target: string; native: string }> = Array.isArray(chap.lines) ? chap.lines : [];
+    if (rawLines.length === 0) return [];
+
+    // Check if rawLines target language matches targetLang
+    // If book is English (source_lang = 'en') and target is Spanish (targetLang = 'es'), but raw lines had target = English:
+    if (isEsTarget && bookSourceLang === 'en') {
+      return rawLines.map(l => ({ target: l.native, native: l.target }));
+    }
+    // If book is Spanish (source_lang = 'es') and target is English (targetLang = 'en'), but raw lines had target = Spanish:
+    if (!isEsTarget && bookSourceLang === 'es') {
+      return rawLines.map(l => ({ target: l.native, native: l.target }));
+    }
+
+    return rawLines;
   };
 
   return (
@@ -600,7 +676,7 @@ export const LiteratureModule: React.FC = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Book size={18} color="var(--primary)" />
-                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>{book.title}</h3>
+                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>{getBookTitle(book)}</h3>
                     </div>
                     <span style={{ 
                       fontSize: '9px', 
@@ -611,12 +687,12 @@ export const LiteratureModule: React.FC = () => {
                       fontWeight: '800',
                       textTransform: 'uppercase'
                     }}>
-                      {book.source_lang === 'es' ? 'Spanish' : 'English'}
+                      {targetLang === 'es' ? 'Spanish Track' : 'English Track'}
                     </span>
                   </div>
                   <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>By {book.author}</p>
                   <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4', marginTop: '4px' }}>
-                    {nativeLanguage === 'es' ? (book.synopsis_es || book.synopsis) : (book.synopsis_en || book.synopsis)}
+                    {getBookSynopsis(book)}
                   </p>
                   
                   <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '6px', fontSize: '12px', color: 'var(--primary)', fontWeight: '700' }}>
@@ -642,7 +718,7 @@ export const LiteratureModule: React.FC = () => {
             </button>
             <div>
               <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '800', textTransform: 'uppercase' }}>Book Adventure Map</span>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>{selectedBook.title}</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>{getBookTitle(selectedBook)}</h2>
             </div>
           </div>
 
@@ -758,10 +834,10 @@ export const LiteratureModule: React.FC = () => {
                       )}
                     </div>
                     <h4 style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                      {chapter.title}
+                      {getChapterTitle(chapter)}
                     </h4>
                     <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.3', marginTop: '2px' }}>
-                      {isLocked ? 'Complete preceding chapters to unlock details.' : chapter.synopsis}
+                      {isLocked ? 'Complete preceding chapters to unlock details.' : getChapterSynopsis(chapter)}
                     </p>
                   </div>
 
@@ -790,7 +866,7 @@ export const LiteratureModule: React.FC = () => {
                 Chapter {selectedChapter.chapter_number} Reading
               </span>
               <h2 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)' }}>
-                {selectedChapter.title}
+                {getChapterTitle(selectedChapter)}
               </h2>
             </div>
           </div>
@@ -895,7 +971,7 @@ export const LiteratureModule: React.FC = () => {
                   Chapter Plot (Synopsis)
                 </div>
                 <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                  {selectedChapter.synopsis}
+                  {getChapterSynopsis(selectedChapter)}
                 </p>
               </div>
             </div>
@@ -928,7 +1004,7 @@ export const LiteratureModule: React.FC = () => {
                 Key Lines and Lessons:
               </div>
               
-              {selectedChapter.lines.map((line, idx) => {
+              {getChapterLines(selectedChapter, selectedBook.source_lang).map((line, idx) => {
                 const isDual = layoutMode === 'translation';
                 const isSideBySide = isDual && !isMobile;
                 const isInterlinear = isDual && isMobile;
