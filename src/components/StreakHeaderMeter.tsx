@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Flame, Star, Award, CheckCircle2, X, BookOpen, Newspaper, MessageSquare, GraduationCap } from 'lucide-react';
+import { Flame, Star, Award, CheckCircle2, X, BookOpen, Newspaper, MessageSquare, GraduationCap, Compass } from 'lucide-react';
+import { AppWalkthroughModal } from './AppWalkthroughModal';
 
 export const StreakHeaderMeter: React.FC = () => {
-  const { stats, nativeLanguage } = useApp();
+  const { stats, nativeLanguage, user } = useApp();
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showTourModal, setShowTourModal] = useState(false);
 
   const dailyPoints = stats.dailyPoints || 0;
   const dailyGoal = stats.dailyGoal || 50;
@@ -254,6 +256,32 @@ export const StreakHeaderMeter: React.FC = () => {
               </div>
             </div>
 
+            {!user && (
+              <button
+                onClick={() => {
+                  setShowDetailModal(false);
+                  setShowTourModal(true);
+                }}
+                style={{
+                  background: 'rgba(139, 92, 246, 0.15)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  color: '#c084fc',
+                  padding: '10px',
+                  borderRadius: '12px',
+                  fontWeight: '700',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Compass size={14} />
+                <span>{nativeLanguage === 'es' ? 'Ver Guía de Módulos y Consejos' : 'View Module Guide & Tips'}</span>
+              </button>
+            )}
+
             <button
               onClick={() => setShowDetailModal(false)}
               style={{
@@ -274,6 +302,12 @@ export const StreakHeaderMeter: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* App Walkthrough Tour Modal */}
+      <AppWalkthroughModal 
+        isOpen={showTourModal}
+        onClose={() => setShowTourModal(false)}
+      />
     </>
   );
 };

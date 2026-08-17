@@ -2,7 +2,28 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
 import { Capacitor } from '@capacitor/core';
-import { Send, Mic, MicOff, Volume2, Sparkles, Languages, CheckCircle2, AlertCircle, BookOpen, Flag, X } from 'lucide-react';
+import { 
+  Send, 
+  Mic, 
+  MicOff, 
+  Volume2, 
+  Sparkles, 
+  Languages, 
+  CheckCircle2, 
+  AlertCircle, 
+  BookOpen, 
+  Flag, 
+  X,
+  History,
+  Plus,
+  MoreVertical,
+  Edit3,
+  Trash2,
+  Pin,
+  Search,
+  ChevronDown,
+  MessageSquare
+} from 'lucide-react';
 import { getApiUrl } from '../utils/api';
 
 // Selected practice phrases based on target language
@@ -70,7 +91,15 @@ export const ChatModule: React.FC = () => {
     nativeLanguage, 
     targetLanguage, 
     level, 
+    conversations,
+    activeConversationId,
+    activeConversation,
     chatHistory, 
+    createConversation,
+    selectConversation,
+    deleteConversation,
+    renameConversation,
+    togglePinConversation,
     addChatMessage, 
     clearChatHistory, 
     speechRate, 
@@ -82,6 +111,14 @@ export const ChatModule: React.FC = () => {
 
   const [activeSubMode, setActiveSubMode] = useState<'chat' | 'pronounce' | 'study'>('study');
   const [activeConcept, setActiveConcept] = useState<Concept | null>(null);
+  
+  // History Drawer & Conversation UI states
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [searchConvQuery, setSearchConvQuery] = useState('');
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editTitleInput, setEditTitleInput] = useState('');
+  const [activeMenuConvId, setActiveMenuConvId] = useState<string | null>(null);
+
   const [studyProgress, setStudyProgress] = useState<Record<string, 'not_started' | 'studying' | 'mastered'>>(() => {
     const data = localStorage.getItem('spanglish_study_progress');
     return data ? JSON.parse(data) : {};
@@ -348,12 +385,22 @@ export const ChatModule: React.FC = () => {
   const startStudySession = async (concept: Concept) => {
     setActiveConcept(concept);
     updateStudyStatus(concept.id, 'studying');
-    clearChatHistory();
     setActiveSubMode('chat');
+
+    // Look for existing session for this concept
+    const existingConv = conversations.find(c => c.conceptId === concept.id);
+    if (existingConv) {
+      await selectConversation(existingConv.id);
+      return;
+    }
+
+    // Create a dedicated lesson conversation thread
+    const newTitle = `📚 ${concept.title}`;
+    const newConvId = await createConversation(newTitle, 'lesson', concept.id);
     setLoading(true);
 
     const userFriendlyText = `Hi! I would like to start a structured lesson on "${concept.title}".`;
-    addChatMessage('user', userFriendlyText);
+    await addChatMessage('user', userFriendlyText, newConvId);
 
     try {
       const response = await fetch(getApiUrl('/api/tutor'), {
@@ -369,13 +416,13 @@ export const ChatModule: React.FC = () => {
       });
       const data = await response.json();
       if (data.text) {
-        addChatMessage('model', data.text);
+        await addChatMessage('model', data.text, newConvId);
         speakText(data.text);
         recordActivity('tutor');
       }
     } catch (error) {
       console.error('Study guide proxy error:', error);
-      addChatMessage('model', "Sorry, I had some trouble starting the study session. Please try again!");
+      await addChatMessage('model', "Sorry, I had some trouble starting the study session. Please try again!", newConvId);
     } finally {
       setLoading(false);
     }
@@ -388,7 +435,7 @@ export const ChatModule: React.FC = () => {
 
     const userMsg = inputText.trim();
     setInputText('');
-    addChatMessage('user', userMsg);
+    await addChatMessage('user', userMsg);
     setLoading(true);
 
     try {
@@ -405,7 +452,7 @@ export const ChatModule: React.FC = () => {
       });
       const data = await response.json();
       if (data.text) {
-        addChatMessage('model', data.text);
+        await addChatMessage('model', data.text);
         // Automatically speak tutor responses for auditory training
         speakText(data.text);
         // Award tutor lesson activity score (+25 XP)
@@ -415,7 +462,7 @@ export const ChatModule: React.FC = () => {
       }
     } catch (error) {
       console.error('Tutor chat proxy error:', error);
-      addChatMessage('model', "Sorry, I had some trouble connecting to my brain. Please check if your Express proxy server is running!");
+      await addChatMessage('model', "Sorry, I had some trouble connecting to my brain. Please check if your Express proxy server is running!");
     } finally {
       setLoading(false);
     }
@@ -674,6 +721,112 @@ export const ChatModule: React.FC = () => {
         // 1. FREE TUTOR CHAT
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           
+          {/* Conversation Switcher Header Bar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            padding: '6px 10px',
+            borderRadius: '12px',
+            marginBottom: '10px',
+            gap: '8px'
+          }}>
+            {/* Active conversation pill - Click to open drawer */}
+            <button
+              onClick={() => setShowHistoryDrawer(true)}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                overflow: 'hidden',
+                padding: '4px 6px',
+                borderRadius: '8px',
+                transition: 'background 0.2s ease'
+              }}
+              onMouseOver={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)')}
+              onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '24px',
+                height: '24px',
+                borderRadius: '6px',
+                background: activeConversation?.type === 'lesson' 
+                  ? 'rgba(168, 85, 247, 0.15)' 
+                  : 'rgba(56, 189, 248, 0.15)',
+                color: activeConversation?.type === 'lesson' ? '#c084fc' : '#38bdf8',
+                flexShrink: 0
+              }}>
+                {activeConversation?.type === 'lesson' ? <BookOpen size={13} /> : <MessageSquare size={13} />}
+              </div>
+
+              <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {activeConversation?.title || 'General Tutor Practice'}
+                </div>
+                <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                  {chatHistory.length} {nativeLanguage === 'es' ? 'mensajes' : 'messages'} · {nativeLanguage === 'es' ? 'Toca para cambiar' : 'Tap to switch'}
+                </div>
+              </div>
+
+              <ChevronDown size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            </button>
+
+            {/* Quick Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+              <button
+                onClick={() => createConversation()}
+                title={nativeLanguage === 'es' ? 'Nueva conversación' : 'New Chat'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'var(--primary-gradient)',
+                  border: 'none',
+                  color: 'white',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(124, 58, 237, 0.3)'
+                }}
+              >
+                <Plus size={13} />
+                <span>{nativeLanguage === 'es' ? 'Nuevo' : 'New'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowHistoryDrawer(true)}
+                title={nativeLanguage === 'es' ? 'Historial de chats' : 'Chat History'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '30px',
+                  height: '30px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+              >
+                <History size={14} />
+              </button>
+            </div>
+          </div>
+          
           {/* Active study session banner */}
           {activeConcept && (
             <div style={{
@@ -840,7 +993,7 @@ export const ChatModule: React.FC = () => {
             {chatHistory.length > 0 && (
               <button 
                 type="button" 
-                onClick={clearChatHistory}
+                onClick={() => clearChatHistory()}
                 style={{
                   background: 'var(--surface)',
                   border: '1px solid var(--border)',
@@ -1383,7 +1536,11 @@ export const ChatModule: React.FC = () => {
                       }}
                     >
                       <Sparkles size={11} />
-                      <span>{status === 'studying' ? 'Continue Lesson' : 'Study with Tutor'}</span>
+                      <span>
+                        {conversations.some(c => c.conceptId === concept.id)
+                          ? (nativeLanguage === 'es' ? 'Continuar Lección' : 'Continue Lesson')
+                          : (nativeLanguage === 'es' ? 'Aprender con Tutor' : 'Study with Tutor')}
+                      </span>
                     </button>
                   </div>
 
@@ -1567,6 +1724,373 @@ export const ChatModule: React.FC = () => {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Session Conversation History Drawer */}
+      {showHistoryDrawer && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(5, 6, 15, 0.85)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 9999,
+            display: 'flex',
+            justifyContent: 'flex-start',
+            animation: 'fadeIn 0.2s ease-out'
+          }}
+          onClick={() => {
+            setShowHistoryDrawer(false);
+            setActiveMenuConvId(null);
+            setEditingConvId(null);
+          }}
+        >
+          <div 
+            style={{
+              width: '85%',
+              maxWidth: '340px',
+              height: '100%',
+              background: 'linear-gradient(180deg, rgba(30, 27, 75, 0.98) 0%, rgba(15, 12, 41, 0.99) 100%)',
+              borderRight: '1px solid rgba(139, 92, 246, 0.3)',
+              boxShadow: '10px 0 30px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '16px',
+              gap: '14px',
+              animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '8px',
+                  background: 'var(--primary-glow)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--primary)'
+                }}>
+                  <History size={16} />
+                </div>
+                <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#fff', margin: 0 }}>
+                  {nativeLanguage === 'es' ? 'Tus Conversaciones' : 'Chat History'}
+                </h3>
+              </div>
+
+              <button
+                onClick={() => setShowHistoryDrawer(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* "+ New Chat" button */}
+            <button
+              onClick={async () => {
+                await createConversation();
+                setShowHistoryDrawer(false);
+              }}
+              className="btn-primary"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              <Plus size={16} />
+              <span>{nativeLanguage === 'es' ? 'Nueva Conversación' : 'New Custom Chat'}</span>
+            </button>
+
+            {/* Search Input */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border)',
+              borderRadius: '10px',
+              padding: '6px 10px'
+            }}>
+              <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              <input
+                type="text"
+                placeholder={nativeLanguage === 'es' ? 'Buscar temas o lecciones...' : 'Search past chats...'}
+                value={searchConvQuery}
+                onChange={e => setSearchConvQuery(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px',
+                  width: '100%'
+                }}
+              />
+              {searchConvQuery && (
+                <button
+                  onClick={() => setSearchConvQuery('')}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Conversations List */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              paddingRight: '2px'
+            }}>
+              {conversations.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', padding: '20px' }}>
+                  {nativeLanguage === 'es' ? 'No hay conversaciones aún.' : 'No conversations yet.'}
+                </div>
+              ) : (
+                conversations
+                  .filter(c => !searchConvQuery || c.title.toLowerCase().includes(searchConvQuery.toLowerCase()))
+                  .map((conv) => {
+                    const isActive = conv.id === activeConversationId;
+                    const isEditing = editingConvId === conv.id;
+                    const isMenuOpen = activeMenuConvId === conv.id;
+
+                    return (
+                      <div
+                        key={conv.id}
+                        style={{
+                          position: 'relative',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: isActive 
+                            ? 'linear-gradient(90deg, rgba(124, 58, 237, 0.25) 0%, rgba(236, 72, 153, 0.15) 100%)' 
+                            : 'rgba(255, 255, 255, 0.03)',
+                          border: isActive 
+                            ? '1px solid rgba(139, 92, 246, 0.5)' 
+                            : '1px solid rgba(255, 255, 255, 0.05)',
+                          borderRadius: '12px',
+                          padding: '8px 10px',
+                          cursor: isEditing ? 'default' : 'pointer',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onClick={() => {
+                          if (!isEditing) {
+                            selectConversation(conv.id);
+                            setShowHistoryDrawer(false);
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+                          <div style={{
+                            color: conv.isPinned ? '#fbbf24' : conv.type === 'lesson' ? '#c084fc' : '#38bdf8',
+                            flexShrink: 0
+                          }}>
+                            {conv.isPinned ? <Pin size={13} style={{ fill: '#fbbf24' }} /> : conv.type === 'lesson' ? <BookOpen size={13} /> : <MessageSquare size={13} />}
+                          </div>
+
+                          {isEditing ? (
+                            <form
+                              onSubmit={e => {
+                                e.preventDefault();
+                                renameConversation(conv.id, editTitleInput);
+                                setEditingConvId(null);
+                              }}
+                              style={{ display: 'flex', gap: '4px', flex: 1, alignItems: 'center' }}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <input
+                                type="text"
+                                value={editTitleInput}
+                                onChange={e => setEditTitleInput(e.target.value)}
+                                autoFocus
+                                style={{
+                                  background: 'rgba(0, 0, 0, 0.4)',
+                                  border: '1px solid var(--primary)',
+                                  borderRadius: '6px',
+                                  color: 'white',
+                                  fontSize: '11.5px',
+                                  padding: '2px 6px',
+                                  width: '100%',
+                                  outline: 'none'
+                                }}
+                              />
+                              <button
+                                type="submit"
+                                style={{
+                                  background: 'var(--primary)',
+                                  border: 'none',
+                                  color: 'white',
+                                  borderRadius: '6px',
+                                  fontSize: '10px',
+                                  padding: '3px 6px',
+                                  cursor: 'pointer',
+                                  fontWeight: '700'
+                                }}
+                              >
+                                ✓
+                              </button>
+                            </form>
+                          ) : (
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <div style={{
+                                fontSize: '12px',
+                                fontWeight: isActive ? '700' : '500',
+                                color: isActive ? '#fff' : 'var(--text-primary)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {conv.title}
+                              </div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                                {new Date(conv.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                {conv.type === 'lesson' && ' · Lesson'}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Options menu trigger */}
+                        {!isEditing && (
+                          <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => setActiveMenuConvId(isMenuOpen ? null : conv.id)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                borderRadius: '4px'
+                              }}
+                            >
+                              <MoreVertical size={13} />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {isMenuOpen && (
+                              <div style={{
+                                position: 'absolute',
+                                right: 0,
+                                top: '24px',
+                                background: 'rgba(20, 18, 50, 0.98)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '10px',
+                                padding: '4px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '2px',
+                                zIndex: 10000,
+                                boxShadow: '0 8px 20px rgba(0,0,0,0.6)',
+                                minWidth: '110px'
+                              }}>
+                                <button
+                                  onClick={() => {
+                                    togglePinConversation(conv.id);
+                                    setActiveMenuConvId(null);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '11px',
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    textAlign: 'left'
+                                  }}
+                                >
+                                  <Pin size={11} />
+                                  <span>{conv.isPinned ? 'Unpin' : 'Pin'}</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setEditingConvId(conv.id);
+                                    setEditTitleInput(conv.title);
+                                    setActiveMenuConvId(null);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '11px',
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    textAlign: 'left'
+                                  }}
+                                >
+                                  <Edit3 size={11} />
+                                  <span>Rename</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(nativeLanguage === 'es' ? '¿Eliminar esta conversación?' : 'Delete this conversation?')) {
+                                      deleteConversation(conv.id);
+                                    }
+                                    setActiveMenuConvId(null);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#f87171',
+                                    fontSize: '11px',
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    textAlign: 'left'
+                                  }}
+                                >
+                                  <Trash2 size={11} />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+              )}
+            </div>
           </div>
         </div>
       )}

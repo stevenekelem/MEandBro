@@ -16,9 +16,20 @@ export interface VocabWord {
 }
 
 
-// Chat message structure
+// Chat message and conversation structures
+export interface Conversation {
+  id: string;
+  title: string;
+  type: 'custom' | 'lesson' | 'roleplay';
+  conceptId?: string;
+  isPinned?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ChatMessage {
   id: string;
+  conversationId?: string;
   role: 'user' | 'model';
   content: string;
   timestamp: number;
@@ -49,6 +60,9 @@ interface AppContextType {
   targetLanguage: 'en' | 'es';
   level: 'basic' | 'intermediate' | 'advanced';
   onboarded: boolean;
+  conversations: Conversation[];
+  activeConversationId: string | null;
+  activeConversation: Conversation | undefined;
   chatHistory: ChatMessage[];
   savedVocabulary: VocabWord[];
   speechRate: number;
@@ -63,8 +77,13 @@ interface AppContextType {
   setNativeLanguage: (lang: 'en' | 'es') => void;
   setLevel: (level: 'basic' | 'intermediate' | 'advanced') => void;
   setOnboarded: (val: boolean) => void;
-  addChatMessage: (role: 'user' | 'model', content: string) => void;
-  clearChatHistory: () => void;
+  createConversation: (title?: string, type?: 'custom' | 'lesson' | 'roleplay', conceptId?: string) => Promise<string>;
+  selectConversation: (conversationId: string) => Promise<void>;
+  deleteConversation: (conversationId: string) => Promise<void>;
+  renameConversation: (conversationId: string, newTitle: string) => Promise<void>;
+  togglePinConversation: (conversationId: string) => Promise<void>;
+  addChatMessage: (role: 'user' | 'model', content: string, customConvId?: string) => Promise<void>;
+  clearChatHistory: (convId?: string) => Promise<void>;
   saveWord: (word: string, translation: string, category?: string) => void;
   removeWord: (word: string) => void;
   setSpeechRate: (rate: number) => void;
@@ -122,9 +141,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('spanglish_onboarded') === 'true';
   });
 
+  // Multi-session conversation management
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    try {
+      const saved = localStorage.getItem('spanglish_conversations');
+      if (saved) {
+        const parsed: Conversation[] = JSON.parse(saved);
+        if (parsed.length > 0) return parsed;
+      }
+      // Backward compatibility: migrate legacy single chat history if exists
+      const legacyChat = localStorage.getItem('spanglish_chat_history');
+      if (legacyChat) {
+        const parsedLegacy = JSON.parse(legacyChat);
+        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
+          const initialConv: Conversation = {
+            id: 'conv-default-1',
+            title: 'General Tutor Practice',
+            type: 'custom',
+            createdAt: parsedLegacy[0]?.timestamp || Date.now(),
+            updatedAt: parsedLegacy[parsedLegacy.length - 1]?.timestamp || Date.now()
+          };
+          localStorage.setItem('spanglish_conversations', JSON.stringify([initialConv]));
+          localStorage.setItem('spanglish_conv_messages_conv-default-1', JSON.stringify(parsedLegacy.map((m: any) => ({
+            ...m,
+            conversationId: 'conv-default-1'
+          }))));
+          return [initialConv];
+        }
+      }
+      // Default initial session
+      const defaultConv: Conversation = {
+        id: 'conv-default-1',
+        title: 'General Tutor Practice',
+        type: 'custom',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      localStorage.setItem('spanglish_conversations', JSON.stringify([defaultConv]));
+      return [defaultConv];
+    } catch (e) {
+      console.error('Error initializing conversations:', e);
+      return [{
+        id: 'conv-default-1',
+        title: 'General Tutor Practice',
+        type: 'custom',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }];
+    }
+  });
+
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(() => {
+    const savedActive = localStorage.getItem('spanglish_active_conv_id');
+    if (savedActive) return savedActive;
+    const savedConvs = localStorage.getItem('spanglish_conversations');
+    if (savedConvs) {
+      try {
+        const parsed = JSON.parse(savedConvs);
+        if (parsed && parsed.length > 0) return parsed[0].id;
+      } catch (e) {}
+    }
+    return 'conv-default-1';
+  });
+
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>(() => {
-    const data = localStorage.getItem('spanglish_chat_history');
-    return data ? JSON.parse(data) : [];
+    try {
+      const activeId = localStorage.getItem('spanglish_active_conv_id') || 'conv-default-1';
+      const convMsgs = localStorage.getItem(`spanglish_conv_messages_${activeId}`);
+      if (convMsgs) return JSON.parse(convMsgs);
+      const legacyChat = localStorage.getItem('spanglish_chat_history');
+      if (legacyChat) return JSON.parse(legacyChat);
+      return [];
+    } catch (e) {
+      return [];
+    }
   });
 
   const [savedVocabulary, setSavedVocabulary] = useState<VocabWord[]>(() => {
@@ -265,24 +355,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem('spanglish_vocabulary', JSON.stringify(parsedVocab));
       }
 
-      // Fetch chat history
-      const { data: chats, error: chatsErr } = await supabase
-        .from('chat_history')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true });
+      // Fetch conversations and thread messages from Supabase
+      try {
+        const { data: convs, error: convsErr } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('user_id', userId)
+          .order('updated_at', { ascending: false });
 
-      if (chatsErr) throw chatsErr;
+        if (!convsErr && convs && convs.length > 0) {
+          const parsedConvs: Conversation[] = convs.map(c => ({
+            id: c.id,
+            title: c.title,
+            type: c.type || 'custom',
+            conceptId: c.concept_id || undefined,
+            isPinned: c.is_pinned || false,
+            createdAt: new Date(c.created_at).getTime(),
+            updatedAt: new Date(c.updated_at).getTime()
+          }));
+          setConversations(parsedConvs);
+          localStorage.setItem('spanglish_conversations', JSON.stringify(parsedConvs));
 
-      if (chats) {
-        const parsedChats = chats.map(c => ({
-          id: c.id,
-          role: c.role as 'user' | 'model',
-          content: c.content,
-          timestamp: new Date(c.created_at).getTime()
-        }));
-        setChatHistory(parsedChats);
-        localStorage.setItem('spanglish_chat_history', JSON.stringify(parsedChats));
+          const currentActive = activeConversationId && parsedConvs.some(c => c.id === activeConversationId)
+            ? activeConversationId
+            : parsedConvs[0].id;
+          
+          setActiveConversationId(currentActive);
+          localStorage.setItem('spanglish_active_conv_id', currentActive);
+
+          // Fetch messages for active conversation
+          const { data: threadMsgs } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('conversation_id', currentActive)
+            .order('created_at', { ascending: true });
+
+          if (threadMsgs) {
+            const parsedMsgs: ChatMessage[] = threadMsgs.map(m => ({
+              id: m.id,
+              conversationId: m.conversation_id,
+              role: m.role as 'user' | 'model',
+              content: m.content,
+              timestamp: new Date(m.created_at).getTime()
+            }));
+            setChatHistory(parsedMsgs);
+            localStorage.setItem(`spanglish_conv_messages_${currentActive}`, JSON.stringify(parsedMsgs));
+          }
+        } else {
+          // Fallback check legacy chat_history table
+          const { data: chats } = await supabase
+            .from('chat_history')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true });
+
+          if (chats && chats.length > 0) {
+            const parsedChats: ChatMessage[] = chats.map(c => ({
+              id: c.id,
+              conversationId: 'conv-default-1',
+              role: c.role as 'user' | 'model',
+              content: c.content,
+              timestamp: new Date(c.created_at).getTime()
+            }));
+            setChatHistory(parsedChats);
+            localStorage.setItem('spanglish_conv_messages_conv-default-1', JSON.stringify(parsedChats));
+          }
+        }
+      } catch (convFetchErr) {
+        console.warn('Could not fetch cloud conversations (table may need migration):', convFetchErr);
       }
 
     } catch (err) {
@@ -457,34 +597,251 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('spanglish_notification_times', JSON.stringify(times));
   };
 
-  // Chat management
-  const addChatMessage = async (role: 'user' | 'model', content: string) => {
-    const newMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role,
-      content,
-      timestamp: Date.now(),
+  // Multi-session Conversation Operations
+  const createConversation = async (
+    title?: string, 
+    type: 'custom' | 'lesson' | 'roleplay' = 'custom', 
+    conceptId?: string
+  ): Promise<string> => {
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `conv-${Date.now()}`;
+    const newTitle = title || (type === 'lesson' ? 'Grammar Lesson' : 'New Tutor Chat');
+    const now = Date.now();
+
+    const newConv: Conversation = {
+      id: newId,
+      title: newTitle,
+      type,
+      conceptId,
+      isPinned: false,
+      createdAt: now,
+      updatedAt: now
     };
-    
-    setChatHistory(prev => {
-      const updated = [...prev, newMessage];
-      localStorage.setItem('spanglish_chat_history', JSON.stringify(updated));
+
+    setConversations(prev => {
+      const updated = [newConv, ...prev];
+      localStorage.setItem('spanglish_conversations', JSON.stringify(updated));
+      return updated;
+    });
+
+    setActiveConversationId(newId);
+    localStorage.setItem('spanglish_active_conv_id', newId);
+    setChatHistory([]);
+    localStorage.setItem(`spanglish_conv_messages_${newId}`, JSON.stringify([]));
+
+    if (user) {
+      try {
+        await supabase.from('conversations').insert({
+          id: newId,
+          user_id: user.id,
+          title: newTitle,
+          type,
+          concept_id: conceptId || null,
+          is_pinned: false
+        });
+      } catch (err) {
+        console.warn('Error creating cloud conversation:', err);
+      }
+    }
+
+    return newId;
+  };
+
+  const selectConversation = async (conversationId: string) => {
+    if (conversationId === activeConversationId) return;
+
+    setActiveConversationId(conversationId);
+    localStorage.setItem('spanglish_active_conv_id', conversationId);
+
+    // 1. Try local cache first for instant UI response
+    const cached = localStorage.getItem(`spanglish_conv_messages_${conversationId}`);
+    if (cached) {
+      setChatHistory(JSON.parse(cached));
+    } else {
+      setChatHistory([]);
+    }
+
+    // 2. Fetch latest messages from Supabase if authenticated
+    if (user) {
+      try {
+        const { data: msgs, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true });
+
+        if (!error && msgs) {
+          const parsed: ChatMessage[] = msgs.map(m => ({
+            id: m.id,
+            conversationId: m.conversation_id,
+            role: m.role as 'user' | 'model',
+            content: m.content,
+            timestamp: new Date(m.created_at).getTime()
+          }));
+          setChatHistory(parsed);
+          localStorage.setItem(`spanglish_conv_messages_${conversationId}`, JSON.stringify(parsed));
+        }
+      } catch (err) {
+        console.warn('Error loading messages for conversation from cloud:', err);
+      }
+    }
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    const remaining = conversations.filter(c => c.id !== conversationId);
+    setConversations(remaining);
+    localStorage.setItem('spanglish_conversations', JSON.stringify(remaining));
+    localStorage.removeItem(`spanglish_conv_messages_${conversationId}`);
+
+    if (activeConversationId === conversationId) {
+      if (remaining.length > 0) {
+        const nextId = remaining[0].id;
+        setActiveConversationId(nextId);
+        localStorage.setItem('spanglish_active_conv_id', nextId);
+        const cached = localStorage.getItem(`spanglish_conv_messages_${nextId}`);
+        setChatHistory(cached ? JSON.parse(cached) : []);
+      } else {
+        // Create fresh default conversation
+        createConversation('General Tutor Practice', 'custom');
+      }
+    }
+
+    if (user) {
+      try {
+        await supabase.from('conversations').delete().eq('id', conversationId);
+      } catch (err) {
+        console.warn('Error deleting cloud conversation:', err);
+      }
+    }
+  };
+
+  const renameConversation = async (conversationId: string, newTitle: string) => {
+    const cleanTitle = newTitle.trim();
+    if (!cleanTitle) return;
+
+    setConversations(prev => {
+      const updated = prev.map(c => c.id === conversationId ? { ...c, title: cleanTitle, updatedAt: Date.now() } : c);
+      localStorage.setItem('spanglish_conversations', JSON.stringify(updated));
       return updated;
     });
 
     if (user) {
       try {
-        await supabase.from('chat_history').insert({
+        await supabase.from('conversations').update({ 
+          title: cleanTitle, 
+          updated_at: new Date().toISOString() 
+        }).eq('id', conversationId);
+      } catch (err) {
+        console.warn('Error renaming cloud conversation:', err);
+      }
+    }
+  };
+
+  const togglePinConversation = async (conversationId: string) => {
+    let updatedPin = false;
+    setConversations(prev => {
+      const updated = prev.map(c => {
+        if (c.id === conversationId) {
+          updatedPin = !c.isPinned;
+          return { ...c, isPinned: updatedPin };
+        }
+        return c;
+      });
+      localStorage.setItem('spanglish_conversations', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (user) {
+      try {
+        await supabase.from('conversations').update({ is_pinned: updatedPin }).eq('id', conversationId);
+      } catch (err) {
+        console.warn('Error toggling pin on cloud conversation:', err);
+      }
+    }
+  };
+
+  // Chat message management (Thread-Scoped)
+  const addChatMessage = async (role: 'user' | 'model', content: string, customConvId?: string) => {
+    const targetConvId = customConvId || activeConversationId || 'conv-default-1';
+    const now = Date.now();
+
+    const newMessage: ChatMessage = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `msg-${now}`,
+      conversationId: targetConvId,
+      role,
+      content,
+      timestamp: now,
+    };
+    
+    // Update active chat history if message belongs to current thread
+    if (targetConvId === activeConversationId) {
+      setChatHistory(prev => {
+        const updated = [...prev, newMessage];
+        localStorage.setItem(`spanglish_conv_messages_${targetConvId}`, JSON.stringify(updated));
+        return updated;
+      });
+    } else {
+      const cached = localStorage.getItem(`spanglish_conv_messages_${targetConvId}`);
+      const list = cached ? JSON.parse(cached) : [];
+      localStorage.setItem(`spanglish_conv_messages_${targetConvId}`, JSON.stringify([...list, newMessage]));
+    }
+
+    // Update conversation updatedAt timestamp & auto-name if first message in custom chat
+    setConversations(prev => {
+      let found = false;
+      const updated = prev.map(c => {
+        if (c.id === targetConvId) {
+          found = true;
+          let newTitle = c.title;
+          // If default placeholder title and this is the user's first prompt, generate a smart short title
+          if (role === 'user' && (c.title === 'New Tutor Chat' || c.title === 'New Conversation')) {
+            const preview = content.trim().replace(/\n+/g, ' ');
+            newTitle = preview.length > 32 ? preview.substring(0, 32) + '...' : preview;
+          }
+          return { ...c, title: newTitle, updatedAt: now };
+        }
+        return c;
+      });
+
+      if (!found) {
+        updated.unshift({
+          id: targetConvId,
+          title: 'Tutor Chat',
+          type: 'custom',
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+
+      // Sort with pinned first, then by updatedAt descending
+      updated.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return b.updatedAt - a.updatedAt;
+      });
+
+      localStorage.setItem('spanglish_conversations', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (user) {
+      try {
+        await supabase.from('chat_messages').insert({
+          id: newMessage.id,
+          conversation_id: targetConvId,
           user_id: user.id,
           role,
           content
         });
+
+        await supabase.from('conversations').update({
+          updated_at: new Date(now).toISOString()
+        }).eq('id', targetConvId);
       } catch (err) {
-        console.error('Error writing chat log to cloud:', err);
+        console.warn('Error writing chat message to cloud:', err);
       }
     }
 
-    // If starting a chat session, record it
+    // If starting a chat session, record stats
     if (chatHistory.length === 0) {
       let updatedStats: UserStats = stats;
       setStats(prev => {
@@ -503,14 +860,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const clearChatHistory = async () => {
-    setChatHistory([]);
-    localStorage.removeItem('spanglish_chat_history');
+  const clearChatHistory = async (convId?: string) => {
+    const targetId = convId || activeConversationId;
+    if (!targetId) return;
+
+    if (targetId === activeConversationId) {
+      setChatHistory([]);
+    }
+    localStorage.removeItem(`spanglish_conv_messages_${targetId}`);
+
     if (user) {
       try {
-        await supabase.from('chat_history').delete().eq('user_id', user.id);
+        await supabase.from('chat_messages').delete().eq('conversation_id', targetId);
       } catch (err) {
-        console.error('Error clearing chat history in cloud:', err);
+        console.warn('Error clearing thread messages in cloud:', err);
       }
     }
   };
@@ -777,15 +1140,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('spanglish_level');
     localStorage.removeItem('spanglish_onboarded');
     localStorage.removeItem('spanglish_chat_history');
+    localStorage.removeItem('spanglish_conversations');
+    localStorage.removeItem('spanglish_active_conv_id');
     localStorage.removeItem('spanglish_vocabulary');
     localStorage.removeItem('spanglish_speech_rate');
     localStorage.removeItem('spanglish_stats');
     localStorage.removeItem('spanglish_notifications_enabled');
     localStorage.removeItem('spanglish_notification_times');
 
+    // Clean any cached conversation messages
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('spanglish_conv_messages_')) {
+        localStorage.removeItem(key);
+      }
+    }
+
+    const defaultConv: Conversation = {
+      id: 'conv-default-1',
+      title: 'General Tutor Practice',
+      type: 'custom',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
     setNativeLanguageState('en');
     setLevelState('basic');
     setOnboardedState(false);
+    setConversations([defaultConv]);
+    setActiveConversationId('conv-default-1');
     setChatHistory([]);
     setSavedVocabulary([]);
     setSpeechRateState(0.85);
@@ -813,12 +1196,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUser(null);
   };
 
+  const activeConversation = conversations.find(c => c.id === activeConversationId) || conversations[0];
+
   return (
     <AppContext.Provider value={{
       nativeLanguage,
       targetLanguage,
       level,
       onboarded,
+      conversations,
+      activeConversationId,
+      activeConversation,
       chatHistory,
       savedVocabulary,
       speechRate,
@@ -833,6 +1221,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setNativeLanguage,
       setLevel,
       setOnboarded,
+      createConversation,
+      selectConversation,
+      deleteConversation,
+      renameConversation,
+      togglePinConversation,
       addChatMessage,
       clearChatHistory,
       saveWord,

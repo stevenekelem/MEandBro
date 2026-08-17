@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Globe, ArrowRight, Check, Sparkles } from 'lucide-react';
+import { Globe, ArrowRight, Check, Compass } from 'lucide-react';
 import { Auth } from './Auth';
+import { AppWalkthroughModal } from './AppWalkthroughModal';
 
 export const Onboarding: React.FC = () => {
   const { nativeLanguage, setNativeLanguage, level, setLevel, setOnboarded } = useApp();
   const [step, setStep] = useState(1);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showTourModal, setShowTourModal] = useState(false);
 
   const handleNext = () => {
     if (step < 3) {
@@ -26,6 +28,13 @@ export const Onboarding: React.FC = () => {
       background: 'radial-gradient(circle at top right, hsla(263, 80%, 65%, 0.1) 0%, transparent 60%)',
       position: 'relative'
     }}>
+      {/* Walkthrough Carousel Modal */}
+      <AppWalkthroughModal 
+        isOpen={showTourModal}
+        onClose={() => setShowTourModal(false)}
+        onOpenAuth={() => setShowAuthModal(true)}
+      />
+
       {/* Auth Modal Overlay */}
       {showAuthModal && (
         <div style={{
@@ -53,21 +62,29 @@ export const Onboarding: React.FC = () => {
 
       {/* Upper Brand Section */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '10px', marginBottom: '10px' }}>
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: 'var(--primary-glow)',
-          border: '1px solid var(--border-glow)',
-          padding: '6px 14px',
-          borderRadius: '99px',
-          color: 'var(--primary)',
-          fontSize: '12px',
-          fontWeight: '600'
-        }}>
-          <Sparkles size={12} />
-          <span>Spanglish App</span>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowTourModal(true)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'var(--primary-glow)',
+            border: '1px solid var(--border-glow)',
+            padding: '6px 12px',
+            borderRadius: '99px',
+            color: 'var(--primary)',
+            fontSize: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.03)')}
+          onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1.0)')}
+        >
+          <Compass size={13} />
+          <span>{nativeLanguage === 'es' ? 'Guía y Consejos' : 'Tour & Tips'}</span>
+        </button>
 
         <button
           type="button"
