@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, type FC, type MouseEvent } from 'react';
 import { useApp } from '../context/AppContext';
 import type { VocabWord } from '../context/AppContext';
 import { speakTextWithBestVoice } from '../utils/speech';
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { sendTestNotification } from '../utils/notifications';
 
-export const VocabularyModule: React.FC = () => {
+export const VocabularyModule: FC = () => {
   const {
     nativeLanguage,
     level,
@@ -45,7 +45,7 @@ export const VocabularyModule: React.FC = () => {
   const [sessionResults, setSessionResults] = useState<{ correct: number; incorrect: number }>({ correct: 0, incorrect: 0 });
   const [shuffleTrigger, setShuffleTrigger] = useState(0);
 
-  const speakVocab = (e: React.MouseEvent, word: string) => {
+  const speakVocab = (e: MouseEvent, word: string) => {
     e.stopPropagation(); // Prevent card toggle expansion
     const targetLang = nativeLanguage === 'en' ? 'es' : 'en';
     speakTextWithBestVoice(word, targetLang, speechRate);
@@ -140,12 +140,12 @@ export const VocabularyModule: React.FC = () => {
     setShuffleTrigger(prev => prev + 1);
   };
 
-  const getVerbConjugations = (conjugations: any) => {
+  const getVerbConjugations = (conjugations: unknown) => {
     if (!conjugations) return null;
     // Handle both stringified JSON and direct object structures
     let parsed = conjugations;
     if (typeof conjugations === 'string') {
-      try { parsed = JSON.parse(conjugations); } catch(e) { return null; }
+      try { parsed = JSON.parse(conjugations); } catch { return null; }
     }
     return parsed?.present || parsed;
   };
@@ -911,10 +911,10 @@ export const VocabularyModule: React.FC = () => {
                 ⚙️ {nativeLanguage === 'es' ? 'Nivel Académico' : 'Academic Level'}
               </span>
               <div style={{ display: 'flex', gap: '6px' }}>
-                {['basic', 'intermediate', 'advanced'].map((lvl) => (
+                {(['basic', 'intermediate', 'advanced'] as const).map((lvl) => (
                   <button
                     key={lvl}
-                    onClick={() => setLevel(lvl as any)}
+                    onClick={() => setLevel(lvl)}
                     style={{
                       flex: 1,
                       background: level === lvl ? 'var(--primary)' : 'var(--surface)',
