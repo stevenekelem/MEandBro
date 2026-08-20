@@ -232,6 +232,11 @@ export const ChatModule: React.FC = () => {
   }, [phraseSource, savedVocabulary, targetLanguage]);
 
 
+  const activeTutorConcept = React.useMemo(() => {
+    if (activeConversation?.type !== 'lesson' || !activeConversation.conceptId) return null;
+    return [...STUDY_CONCEPTS.es, ...STUDY_CONCEPTS.en].find(c => c.id === activeConversation.conceptId) || null;
+  }, [activeConversation]);
+
   // Auto-scroll chat history
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -449,7 +454,6 @@ export const ChatModule: React.FC = () => {
 
     const userMsg = inputText.trim();
     const conversationId = activeConversationIdRef.current || 'conv-default-1';
-    const historyForRequest = [...chatHistory, { role: 'user', content: userMsg }];
     setInputText('');
     setLoading(true);
     await addChatMessage('user', userMsg, conversationId);
@@ -460,10 +464,10 @@ export const ChatModule: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          history: historyForRequest,
+          history: chatHistory,
           nativeLanguage,
           level,
-          concept: activeConcept
+          concept: activeTutorConcept || (activeConversation?.type === 'lesson' ? activeConcept : null)
         })
       });
       if (!response.ok) throw new Error(`Tutor request failed with status ${response.status}`);
