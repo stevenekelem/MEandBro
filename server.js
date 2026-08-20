@@ -332,7 +332,7 @@ app.post(['/api/tutor', '/tutor'], async (req, res) => {
     // 1a. Mock mode fallback if no API key is configured
     if (!ai) {
       console.log('[Mock Tutor] Processing query:', message);
-      const reply = getMockTutorResponse(nativeLanguage, level);
+      const reply = getMockTutorResponse(nativeLanguage, level, message);
       return res.json({ text: reply });
     }
 
