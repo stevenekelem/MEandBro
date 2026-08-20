@@ -205,6 +205,20 @@ export const ChatModule: React.FC = () => {
   const latestTranscriptRef = useRef('');
   const wasListeningRef = useRef(false);
   const speechTimeoutRef = useRef<any>(null);
+  const activeConversationIdRef = useRef(activeConversationId);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    return () => {
+      if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch (err) { console.error('Error cleaning up speech recognition:', err); }
+      }
+    };
+  }, []);
 
   // Compute available phrases based on source
   const phrases = React.useMemo(() => {
@@ -431,12 +445,14 @@ export const ChatModule: React.FC = () => {
   // 1. Send free-form chat message to tutor
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim()) return;
+    if (loading || !inputText.trim()) return;
 
     const userMsg = inputText.trim();
+    const conversationId = activeConversationIdRef.current || 'conv-default-1';
+    const historyForRequest = [...chatHistory, { role: 'user', content: userMsg }];
     setInputText('');
-    await addChatMessage('user', userMsg);
     setLoading(true);
+    await addChatMessage('user', userMsg, conversationId);
 
     try {
       const response = await fetch(getApiUrl('/api/tutor'), {
@@ -444,25 +460,23 @@ export const ChatModule: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          history: chatHistory,
+          history: historyForRequest,
           nativeLanguage,
           level,
           concept: activeConcept
         })
       });
+      if (!response.ok) throw new Error(`Tutor request failed with status ${response.status}`);
       const data = await response.json();
-      if (data.text) {
-        await addChatMessage('model', data.text);
-        // Automatically speak tutor responses for auditory training
-        speakText(data.text);
-        // Award tutor lesson activity score (+25 XP)
-        recordActivity('tutor');
-      } else {
-        throw new Error('No reply received');
-      }
+      if (!data.text) throw new Error('No reply received');
+      await addChatMessage('model', data.text, conversationId);
+      // Automatically speak tutor responses for auditory training
+      speakText(data.text);
+      // Award tutor lesson activity score (+25 XP)
+      recordActivity('tutor');
     } catch (error) {
       console.error('Tutor chat proxy error:', error);
-      await addChatMessage('model', "Sorry, I had some trouble connecting to my brain. Please check if your Express proxy server is running!");
+      await addChatMessage('model', "Sorry, I had some trouble connecting to my brain. Please check if your Express proxy server is running!", conversationId);
     } finally {
       setLoading(false);
     }
