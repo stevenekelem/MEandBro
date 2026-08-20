@@ -841,8 +841,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // If starting a chat session, record stats
-    if (chatHistory.length === 0) {
+    // Count a session only when this conversation had no messages before this write.
+    let isStartingChat = true;
+    try {
+      const cachedMessages = localStorage.getItem(`spanglish_conv_messages_${targetConvId}`);
+      isStartingChat = !cachedMessages || JSON.parse(cachedMessages).length === 0;
+    } catch {
+      isStartingChat = true;
+    }
+    if (isStartingChat) {
       let updatedStats: UserStats = stats;
       setStats(prev => {
         updatedStats = { ...prev, chatSessions: prev.chatSessions + 1 };
